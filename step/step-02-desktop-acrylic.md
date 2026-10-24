@@ -2,7 +2,7 @@
 
 - Task: widget-notify-calendar
 - Step: 2 / 7
-- Status: pending
+- Status: done
 - Depends on: step 1
 - Produces: `manifest.json` 为 1.2.0，2 张桌面浮窗默认 `windowLevel: "desktop"` + `windowMaterial: "acrylic"`，`minAuroraVersion: "0.5.2"`；README 与旧限制文档同步
 - Phase: 核心链路
@@ -69,4 +69,21 @@
 
 ## 执行记录
 
-（执行后填写：实际改动、验证结果、遗留问题。）
+- 实际改动（提交 `29ad322`，5 个文件）：
+  - `class-management/manifest.json`：`version` 1.2.0、`minAuroraVersion` 0.5.2，两个 widget 增加 `windowLevel: "desktop"` + `windowMaterial: "acrylic"`（位于 `slot` 之后，其余字段与 widget id 未动）。
+  - `docs/aurora-widget-desktop-level.md`：整篇从“0.5.1 需求说明”改写为《Aurora 桌面层与亚克力小组件能力说明（v0.5.2）》：能力字段、插件声明示例、用户覆盖层级（`windowLevelOverride`）、边界（非壁纸层/图标层/点击穿透、owner 亲和失败回退 normal、Acrylic 条件与不透明回退）、旧宿主 0.5.1 静默忽略字段因此抬最低版本、生效自查清单。
+  - `README.md`（根）：Aurora 版本口径改 0.5.2；「平台特性与边界（Aurora 0.5.2）」重写为桌面层 + 可覆盖 + Acrylic 条件与回退；删除“浮窗无法只在桌面显示”的旧限制；目录说明里 docs 文档描述同步。
+  - `class-management/README.md`：版本 1.2.0 / Aurora ≥ 0.5.2；桌面浮窗表增加 `windowLevel` / `windowMaterial` 两列；平台特性同步 0.5.2。
+  - `dev/test-plugin.mjs`：清单断言改 1.2.0 / 0.5.2；widget 测试增加两个 `windowLevel === 'desktop'` / `windowMaterial === 'acrylic'` 断言；`ctx.plugin.version` 同步 1.2.0；仍保留宿主原版 zod `parsePluginManifest` 校验。
+- 子代理分片与结果：
+  - 分片 A（docs/aurora-widget-desktop-level.md）：完成；自检 33 行关键字段命中、过时断言 0 命中、文档内 manifest 片段与真实清单逐字段一致。
+  - 分片 B（README.md + class-management/README.md）：完成；自检两文件均命中 0.5.2 / windowLevel / 桌面层，旧限制表述 0 命中。
+  - 主代理：manifest、`dev/test-plugin.mjs` 断言；集成与验收复跑。
+- 验证命令与结果（均为主代理实跑）：
+  - `node plugin-dev-kit/tools/check-plugin.mjs class-management` → 退出码 0，`✓ 清单通过：…v1.2.0`；
+  - `node dev/test-plugin.mjs` → **59/59** 通过（校验器：Aurora 0.5.2 宿主校验器；含宿主原版 zod 清单解析通过）；
+  - 清单断言 `node -e ...` → 退出码 0；
+  - `node dev/preview.mjs` → 退出码 0，11 张 PNG 生成（视觉与 v1.1.0 一致，本步未改 schema）；
+  - `Select-String -Path README.md,class-management/README.md -Pattern '无法.*桌面|不能.*桌面'` → 无命中；两处平台说明包含 `windowLevel` / 桌面层 / acrylic；
+  - `git diff --check` → 无输出。
+- 遗留问题：验收标准中的“真机手动核对（安装 v1.2.0 后校验桌面层/Acrylic/层级覆盖）”无法在离线环境自动完成，需用户在 Aurora 0.5.2 真机验收；代码侧已按契约声明默认值，未做外部 Win32 修改。

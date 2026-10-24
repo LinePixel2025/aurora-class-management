@@ -2,7 +2,7 @@
 
 - Task: widget-notify-calendar
 - Step: 1 / 7
-- Status: pending
+- Status: done
 - Depends on: none
 - Produces: `dev/preview.mjs` 能按文件名模式发现 Aurora 0.5.2 的渲染资源，`node dev/preview.mjs` 退出码 0 并生成完整预览与截图
 - Phase: 基础与配置
@@ -57,4 +57,16 @@ Aurora 0.5.2 更换了 widget CSS 的构建哈希，当前 `dev/preview.mjs` 硬
 
 ## 执行记录
 
-（执行后填写：实际改动、验证结果、遗留问题。）
+- 实际改动（`dev/preview.mjs`）：
+  - 把 asar 头解析抽成 `readAsarHeader(asarPath)`（返回 `{ headerSize, index }`），`readAsarEntry` 改为复用它，数据偏移公式不变；
+  - 新增 `walkAsarFiles` / `listAsarFiles(asarPath, parts = ['out','renderer','assets'])`，递归列出 asar 内资源路径；
+  - 新增 `findAsset(asarPath, pattern, label)`，按正则匹配资源名，找不到时抛错并列出已见资源（不回退旧哈希）；
+  - `mainRun()` 中 4 处硬编码资源读取改为 `findAsset` 模式匹配：`theme-*.css`、`PluginSchemaRenderer-*.css`、`widget-*.css`、`PluginPageFrame-*.css`；保留 `readAsarEntry` 与字体提取逻辑。
+- 与计划核对：本机 0.5.2 `app.asar` 共 200 个文件，`out/renderer/assets/` 下匹配到 `theme-BXOgGZMN.css`、`PluginSchemaRenderer-B9w_IhaU.css`、`widget-CG0kUrlE.css`、`PluginPageFrame-Cq1k62Fi.css`，与计划列出的实际资源一致。
+- 验证命令与结果：
+  - `node dev/preview.mjs` → 退出码 0，11 个 HTML + 11 张 PNG 全部生成（✓），输出无“app.asar 中缺少预览所需的样式文件”；
+  - `Get-ChildItem dev/.cache -Filter *.png | Measure-Object` → Count 14（本次生成 11 张 + 3 张历史残留：`aurora-mark-*.png` ×2、`panel-notice-dark.png`），`widgets-dark.png` / `panel-board-full-dark.png` / `panel-board-edit-dark.png` 均存在；
+  - `node dev/test-plugin.mjs` → 59/59 通过（本步未动插件代码）；
+  - `git diff --name-only` → 仅 `dev/preview.mjs`；`git diff --check` → 无输出。
+- 提交：`420d1d6`（fix: 预览脚本按模式发现 Aurora 0.5.2 资源哈希）；计划文件提交 `6616399`。
+- 遗留问题：无。`dev/.cache/` 中 3 张历史残留截图不参与验收（已被 `.gitignore` 忽略）。

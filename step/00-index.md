@@ -40,9 +40,9 @@
 
 | # | 文件 | 标题 | 状态 | 依赖 | 写范围 |
 |---|------|------|------|------|--------|
-| 1 | step-01-preview-assets.md | 修复预览脚本适配 0.5.2 资源哈希 | pending | - | `dev/preview.mjs`、`dev/.cache/` |
-| 2 | step-02-desktop-acrylic.md | v1.2.0 桌面层与原生亚克力 | pending | step 1 | `class-management/manifest.json`、`class-management/README.md`、`README.md`、`docs/aurora-widget-desktop-level.md`、`dev/test-plugin.mjs` |
-| 3 | step-03-notifications.md | v1.3.0 系统通知与定时提醒 | pending | step 2 | `class-management/manifest.json`、`class-management/main.js`、`class-management/lib/notify.js`、`dev/test-plugin.mjs`、`README.md`、`class-management/README.md` |
+| 1 | step-01-preview-assets.md | 修复预览脚本适配 0.5.2 资源哈希 | done | - | `dev/preview.mjs`、`dev/.cache/` |
+| 2 | step-02-desktop-acrylic.md | v1.2.0 桌面层与原生亚克力 | done | step 1 | `class-management/manifest.json`、`class-management/README.md`、`README.md`、`docs/aurora-widget-desktop-level.md`、`dev/test-plugin.mjs` |
+| 3 | step-03-notifications.md | v1.3.0 系统通知与定时提醒 | done | step 2 | `class-management/manifest.json`、`class-management/main.js`、`class-management/lib/notify.js`、`dev/test-plugin.mjs`、`README.md`、`class-management/README.md` |
 | 4 | step-04-calendar-backend.md | v2.0.0 班级周历后端与数据接口 | pending | step 3 | `class-management/lib/calendar.js`、`class-management/lib/ops.js`、`class-management/main.js`、`dev/test-plugin.mjs` |
 | 5 | step-05-calendar-page.md | v2.0.0 页面型班级周历与预览 | pending | step 4 | `class-management/manifest.json`、`class-management/main.js`、`class-management/lib/push.js`、`class-management/ui/calendar.html`、`class-management/ui/calendar.css`、`class-management/ui/calendar.js`、`dev/preview-calendar.mjs`、`dev/test-plugin.mjs`、`dev/.cache/` |
 | 6 | step-06-docs-build.md | v2.0.0 文档、截图与构建 | pending | step 5 | `README.md`、`class-management/README.md`、`docs/images/calendar-dark.png`、`docs/images/calendar-light.png`、`dev/preview-calendar.mjs`、`dev/.cache/`、`dist/` |
@@ -60,3 +60,7 @@
 ## 执行记录
 
 （供执行阶段追加：每步实际改动、验证结果、git 提交清单、代码审查结论与处置。）
+
+- step 1（2026-10-24）：`dev/preview.mjs` 增加 asar 资源模式发现（`readAsarHeader`/`listAsarFiles`/`findAsset`），4 处硬编码 CSS 哈希改为 `theme-*` / `PluginSchemaRenderer-*` / `widget-*` / `PluginPageFrame-*`；`node dev/preview.mjs` 退出码 0、生成 11 张 PNG，`node dev/test-plugin.mjs` 59/59。提交 `420d1d6`（计划文件提交 `6616399`）。
+- step 2（2026-10-24）：manifest 升 v1.2.0 / minAuroraVersion 0.5.2，2 个 widget 默认 `windowLevel: desktop` + `windowMaterial: acrylic`；`docs/aurora-widget-desktop-level.md` 改写为 0.5.2 能力说明；两份 README 同步平台特性；测试增加 widget 层级/材质断言。验收：check-plugin v1.2.0 通过、test 59/59、preview 11 张 PNG、README 旧限制表述清零、`git diff --check` 通过。提交 `29ad322`。
+- step 3（2026-10-24）：新增 `lib/notify.js`（每日简报 / 截止提醒 / 周一值日提醒、`notify.v1` 去重、失败只记日志）；manifest 升 v1.3.0 + `notifications` 权限 + 5 个通知配置字段；`readSettings` 净化、`main.js` 接线与激活补发、`__test.checkNotifications`；测试增加 12 条通知用例（71/71）；两份 README 补系统通知说明。验收：check-plugin v1.3.0 通过、test 71/71、preview 11 张 PNG、清单/设置断言通过、`git diff --check` 通过。提交 `c29e651`。

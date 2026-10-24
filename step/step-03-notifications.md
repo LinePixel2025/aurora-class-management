@@ -2,7 +2,7 @@
 
 - Task: widget-notify-calendar
 - Step: 3 / 7
-- Status: pending
+- Status: done
 - Depends on: step 2
 - Produces: v1.3.0 清单增加 `notifications` 权限与 5 个通知配置字段；`lib/notify.js` 实现每日简报、截止提醒、周一值日提醒；离线测试证明重复 tick 不重复通知
 - Phase: 核心链路
@@ -83,4 +83,24 @@
 
 ## 执行记录
 
-（执行后填写：实际改动、验证结果、遗留问题。）
+- 实际改动（提交 `c29e651`，7 个文件，+507/-18）：
+  - `class-management/lib/notify.js`（新增 208 行）：`NOTIFY_KEY='notify.v1'`、`readNotifyState`/`writeNotifyState`（净化非法字段、`__proto__` 拒收）、`timeToMinutes`、`checkNotifications`（三项全关直接返回、不读 board/不写存储；每日简报 / 周一值日 / 截止提醒；`notify.v1` 去重；每次只清理非今天键、仅内容变化才写盘；`ctx.notify` 返回 false 或抛错均只记 warn、不打断且记录“已尝试”）。
+  - `class-management/manifest.json`：version 1.3.0、`permissions` 增加 `notifications`、`config.fields` 追加 5 个通知字段（默认全关 / `07:30` / 10 分钟 / 0–120）。
+  - `class-management/lib/state.js`：`readSettings` 增加 5 个通知字段的读取与净化（`notifyTime` 非法回退 07:30；`notifyDueLead` 截断 0–120、0 合法）。
+  - `class-management/main.js`：引入 `checkNotifications`；60 秒定时器内 `tick` 与 `checkNotifications` 各自独立 catch；激活后立即补发一次；`__test.checkNotifications` 暴露给测试。
+  - `dev/test-plugin.mjs`：mock `notify` 记录通知并支持返回 false；清单断言更新（1.3.0 / notifications / 9 个配置字段）；新增「通知与定时提醒」12 条测试（全关不发不写、每日/截止/周一各一次、`notifyDueLead=0` 边界、多任务合并、非法配置回退、明天截止不提醒、notify false 记 warn、重启不重复、activate 补发不重复）。
+  - `README.md` / `class-management/README.md`：权限列表加 `notifications`；新增「系统通知（可选）」小节（三类行为、5 字段默认值、`notify.v1` 去重、仅 Aurora 运行时生效/不常驻后台/不联网）；插件 README 版本 1.3.0、目录补 `lib/notify.js`；验证段测试数 71/71、宿主校验器 0.5.2。
+- 子代理分片与结果（4 个并行分片，写范围互不重叠）：
+  - A `lib/notify.js`：完成；自测 10/10（全关不读不写、三类通知各一次、notify false/抛错不重复、lead=0 边界）。
+  - B `manifest.json` + `lib/state.js` + `main.js`：完成；check-plugin v1.3.0、宿主原版 zod 清单解析通过。
+  - C `dev/test-plugin.mjs` 测试：完成；新增 12 条通知测试，最终 71/71。
+  - D 两份 README：完成；通知板块与权限/字段说明补齐；主代理把分片按旧计数写的 69/69 修正为实测 71/71。
+- 验证命令与结果（主代理实跑）：
+  - `node plugin-dev-kit/tools/check-plugin.mjs class-management` → 退出码 0，`✓ 清单通过：…v1.3.0`；
+  - `node dev/test-plugin.mjs` → **71/71** 通过（原 59 + 通知 12；含宿主原版 zod 清单解析）；
+  - `node dev/preview.mjs` → 退出码 0，11 张 PNG 全部生成（schema 未变，视觉应与 v1.2.0 一致）；
+  - 清单断言（1.3.0 / notifications / 5 个 key）→ 退出码 0；`readSettings` 回退/截断断言 → 退出码 0；`node --check notify.js` → 通过；
+  - `Select-String -Path README.md,class-management/README.md -Pattern 'notifications|每日简报|截止提醒|周一值日'` → 两文件分别 8 / 7 处命中；
+  - `git diff --check` → 无输出。
+- 执行中确认的实现口径（审查/后续步骤可参考）：`ctx.notify` 抛错也记“已尝试”（当天不重试）；截止提醒摘要顺序跟随 `loadWeek`（到期日今天优先、再按时间）而非严格 `dueTime` 升序；`timeToMinutes` 与 `normalizeTime` 同口径（接受 `7:05`）。均符合计划，不构成阻塞。
+- 遗留问题：真机验收（开启通知后在 Aurora 运行期收到每日简报/截止提醒/周一提醒、关闭后不打扰）需用户在真机确认；离线测试已覆盖去重与开关行为。
