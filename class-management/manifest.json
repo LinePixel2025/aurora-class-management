@@ -1,7 +1,7 @@
 {
   "id": "com.classmanagement.board",
   "name": "班级事务台",
-  "version": "1.3.0",
+  "version": "2.0.0",
   "apiVersion": 1,
   "minAuroraVersion": "0.5.2",
   "description": "2 张桌面浮窗显示班级速览/本周值日与今日事务/本周安排，并提供 4 视图管理台与一整套 Agent 工具。",
@@ -550,6 +550,12 @@
         "title": "总结今日班级计划",
         "description": "让 Agent 读取今日数据并用三条要点总结今天要做什么",
         "mode": "prompt"
+      },
+      {
+        "name": "calendar",
+        "title": "打开班级周历",
+        "description": "在右栏打开班级周历，按天查看和编辑事务、安排与值日",
+        "mode": "action"
       }
     ],
     "panels": [
@@ -558,6 +564,12 @@
         "title": "班级事务台",
         "icon": "CalendarClock",
         "schema": "ui/panel.json"
+      },
+      {
+        "id": "calendar",
+        "title": "班级周历",
+        "icon": "CalendarClock",
+        "entry": "ui/calendar.html"
       }
     ],
     "widgets": [

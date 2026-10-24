@@ -9,7 +9,7 @@
  *   静态与动态 schema（找不到 Aurora 时降级为内置结构检查并打印警告）；
  * - 覆盖时间、存储、旧数据迁移、每日清空与 7 天历史、整周值日、工具、2 个浮窗、
  *   4 个面板视图、推送、跨天刷新、三类可选通知（每日简报 / 截止提醒 / 周一值日）
- *   与页面型「班级周历」后端。
+ *   与页面型「班级周历」的后端行为、页面静态约束和命令接线。
  *
  * 运行：node dev/test-plugin.mjs
  */
@@ -30,7 +30,11 @@ const stateLib = require(path.join(PLUGIN, 'lib', 'state.js'))
 
 const PLUGIN_ID = 'com.classmanagement.board'
 const PANEL_ID = 'board'
+const CALENDAR_PANEL_ID = 'calendar'
+const PANEL_IDS = [PANEL_ID, CALENDAR_PANEL_ID]
 const WIDGETS = ['week-overview', 'week-tasks']
+const EVENT = 'board.changed'
+const PAGE_FILES = ['ui/calendar.html', 'ui/calendar.css', 'ui/calendar.js']
 const BASE_NOW = new Date(2026, 9, 21, 10, 0, 0, 0) // 2026-10-21（周三）10:00，本地时区
 
 const results = { checks: 0, failures: [] }
@@ -330,7 +334,7 @@ function createContext(options) {
     ...(settings.config || {}),
   }
   const ctx = {
-    plugin: { id: PLUGIN_ID, version: '1.3.0', root: PLUGIN, dataDir: PLUGIN, isDev: true },
+    plugin: { id: PLUGIN_ID, version: '2.0.0', root: PLUGIN, dataDir: PLUGIN, isDev: true },
     config,
     storage: {
       async get(key) {
@@ -387,12 +391,27 @@ function assertPushInvariants(env, since, label) {
   for (const push of slice) {
     const targetKeys = ['panelId', 'widgetId'].filter((key) => push[key] !== undefined)
     assertEqual(targetKeys.length, 1, `${label} 推送必须 panelId / widgetId 二选一`)
-    if (push.panelId !== undefined) assertEqual(push.panelId, PANEL_ID, `${label} 面板目标非法`)
+    if (push.panelId !== undefined) {
+      assert(PANEL_IDS.includes(push.panelId), `${label} 面板目标非法：${push.panelId}`)
+    }
     if (push.widgetId !== undefined) assert(WIDGETS.includes(push.widgetId), `${label} 小组件目标非法：${push.widgetId}`)
     assert(/^[a-z][a-z0-9_.-]{0,63}$/.test(push.event), `${label} 事件名非法：${push.event}`)
     assert(bytes(push.payload ?? null) <= 64 * 1024, `${label} payload 超过 64 KB`)
   }
-  assert(slice.length <= 3, `${label} 一次变更推送超过 5 条：${slice.length}`)
+  assert(slice.length <= 5, `${label} 一次变更推送超过 5 条：${slice.length}`)
+}
+
+/** pushAll 固定推 4 条：2 个面板（board + calendar）+ 2 个小组件，低于宿主 5 条上限。 */
+function assertPushAllSlice(env, since, label) {
+  assertPushInvariants(env, since, label)
+  const slice = env.pushes.slice(since)
+  assertEqual(slice.length, 4, `${label} 应推送 4 条（2 面板 + 2 浮窗），实际 ${slice.length}`)
+  const panelIds = slice.filter((push) => push.panelId !== undefined).map((push) => push.panelId).sort()
+  const widgetIds = slice.filter((push) => push.widgetId !== undefined).map((push) => push.widgetId).sort()
+  assertEqual(panelIds.join(','), PANEL_IDS.slice().sort().join(','), `${label} 面板推送应覆盖 board 与 calendar`)
+  assertEqual(widgetIds.join(','), WIDGETS.slice().sort().join(','), `${label} 浮窗推送应覆盖 2 个小组件`)
+  for (const push of slice) assertEqual(push.event, EVENT, `${label} 推送事件名应为 ${EVENT}`)
+  return slice
 }
 
 async function withEnv(options, fn) {
@@ -434,7 +453,16 @@ async function refreshPanel(env) {
 
 /** 页面型面板的 params 是直接对象，不要再套 `{ params, values }`。 */
 function invokeCalendar(env, method, params) {
-  return main.invokePanel('calendar', method, params !== null && typeof params === 'object' ? params : {}, env.ctx)
+  return main.invokePanel(CALENDAR_PANEL_ID, method, params !== null && typeof params === 'object' ? params : {}, env.ctx)
+}
+
+/** 读取页面静态文件；缺失或为空时给出可读失败信息。 */
+function readPageFile(relativePath) {
+  const file = path.join(PLUGIN, relativePath)
+  assert(fs.existsSync(file), `缺少页面文件：${relativePath}`)
+  const text = fs.readFileSync(file, 'utf8')
+  assert(text.trim() !== '', `页面文件为空：${relativePath}`)
+  return text
 }
 
 /** 成功返回 `{ data, message? }`；把契约检查集中在这里，失败时给出可读原因。 */
@@ -543,7 +571,7 @@ async function mainTest() {
   header('清单与静态文件')
   await test('清单基础字段', async () => {
     assertEqual(manifest.id, PLUGIN_ID)
-    assertEqual(manifest.version, '1.3.0')
+    assertEqual(manifest.version, '2.0.0')
     assertEqual(manifest.apiVersion, 1)
     assertEqual(manifest.minAuroraVersion, '0.5.2')
     assertEqual(manifest.main, 'main.js')
@@ -595,11 +623,25 @@ async function mainTest() {
       WIDGETS.slice().sort().join(','),
     )
   })
-  await test('面板 / 命令 / Skill / 配置', async () => {
-    assertEqual(manifest.contributes.panels.length, 1)
-    assertEqual(manifest.contributes.panels[0].id, PANEL_ID)
-    assertEqual(manifest.contributes.panels[0].schema !== undefined, true)
-    assertEqual(manifest.contributes.commands.map((command) => command.name).sort().join(','), ['class', 'week-plan'].sort().join(','))
+  await test('面板 2 个（board/calendar）/ 命令 3 个 / Skill / 配置', async () => {
+    assertEqual(manifest.contributes.panels.length, 2)
+    const board = manifest.contributes.panels.find((panel) => panel.id === PANEL_ID)
+    assert(board !== undefined, '缺少 board 声明式面板')
+    assertEqual(board.schema, 'ui/panel.json', 'board 面板应声明 schema ui/panel.json')
+    const calendar = manifest.contributes.panels.find((panel) => panel.id === CALENDAR_PANEL_ID)
+    assert(calendar !== undefined, '缺少 calendar 页面型面板')
+    assertEqual(calendar.entry, 'ui/calendar.html', 'calendar 面板 entry 应为 ui/calendar.html')
+    assertEqual(
+      manifest.contributes.panels.map((panel) => panel.id).sort().join(','),
+      PANEL_IDS.slice().sort().join(','),
+    )
+    assertEqual(
+      manifest.contributes.commands.map((command) => command.name).sort().join(','),
+      ['class', 'week-plan', 'calendar'].sort().join(','),
+    )
+    const calendarCommand = manifest.contributes.commands.find((command) => command.name === CALENDAR_PANEL_ID)
+    assert(calendarCommand !== undefined, '缺少 calendar 命令')
+    assertEqual(calendarCommand.mode, 'action', 'calendar 命令应为 action')
     assertEqual(manifest.contributes.skills[0], 'skills/class-board')
     assert(fs.existsSync(path.join(PLUGIN, 'skills', 'class-board', 'SKILL.md')), '缺少 SKILL.md')
     const configKeys = manifest.config.fields.map((field) => field.key)
@@ -764,12 +806,12 @@ async function mainTest() {
       assert(text.includes('周五大扫除'), '速览缺少通知')
       validateSchema('班级速览', schema)
     })
-    await test('浮窗快速添加（values）→ 3 条推送且其他浮窗同步', async () => {
+    await test('浮窗快速添加（values）→ 4 条推送且其他浮窗同步', async () => {
       const before = pushCount(env)
       const result = await invokeWidget(env, 'week-tasks', 'quick-add', undefined, { quickTask: '收英语作业' })
       validateSchema('快速添加后的浮窗', result.schema)
       assertPushInvariants(env, before, 'quick-add')
-      assertEqual(pushCount(env) - before, 3, '快速添加应推送面板 + 2 个浮窗')
+      assertEqual(pushCount(env) - before, 4, '快速添加应推送 2 个面板 + 2 个浮窗')
       const overview = await invokeTool(env, 'list_tasks', { status: 'pending' })
       assert(overview.content.includes('收英语作业'), '快速添加未落盘')
       const overviewWidget = await refreshWidget(env, 'week-overview')
@@ -1762,12 +1804,57 @@ async function mainTest() {
     })
   })
 
+  header('页面型周历')
+  await test('页面三文件存在且非空', async () => {
+    for (const file of PAGE_FILES) readPageFile(file)
+  })
+  await test('calendar.html 无内联脚本 / 外链 / 内联事件', async () => {
+    const html = readPageFile('ui/calendar.html')
+    const scripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)]
+    assert(scripts.length >= 1, 'calendar.html 缺少带 src 的 <script>')
+    for (const match of scripts) {
+      assert(/\bsrc\s*=/i.test(match[1]), 'calendar.html 存在缺少 src 的内联 <script>')
+      assertEqual(match[2].trim(), '', 'calendar.html 的 <script> 不能包含内联代码')
+    }
+    const openings = html.match(/<script\b/gi) || []
+    assertEqual(openings.length, scripts.length, 'calendar.html 存在未闭合的 <script>')
+    assert(!/https?:\/\//i.test(html), 'calendar.html 不应包含 http:// 或 https:// 外链')
+    assert(!/<[^>]*\son[a-z]+\s*=/i.test(html), 'calendar.html 不应包含 on* 内联事件属性')
+  })
+  await test('calendar.js 通过 auroraPlugin.request/onEvent 通信且不含 fetch/eval', async () => {
+    const js = readPageFile('ui/calendar.js')
+    assert(js.includes('auroraPlugin.request'), 'calendar.js 缺少 auroraPlugin.request')
+    assert(js.includes('auroraPlugin.onEvent'), 'calendar.js 缺少 auroraPlugin.onEvent')
+    assert(!/\bfetch\s*\(/.test(js), 'calendar.js 不应调用 fetch(')
+    assert(!/\beval\s*\(/.test(js), 'calendar.js 不应调用 eval(')
+  })
+  await withEnv({}, async (env) => {
+    await test('页面请求 invokePanel("calendar", "load") 返回 7 天数据', async () => {
+      const result = await main.invokePanel(CALENDAR_PANEL_ID, 'load', {}, env.ctx)
+      const data = expectCalendarOk(result, '页面 calendar load')
+      assertEqual(data.days.length, 7, '页面 load 应返回 7 天')
+      assertEqual(data.days.map((day) => day.weekday).join(','), '1,2,3,4,5,6,7', 'weekday 应依次为 1..7')
+      assertEqual(data.days[0].date, '2026-10-19', '第一天应为本周一')
+      assertEqual(data.days[6].date, '2026-10-25', '最后一天应为本周日')
+      assertEqual(data.isCurrentWeek, true)
+      assertEqual(data.canEdit, true)
+    })
+  })
+
   header('命令与推送')
   await withEnv({}, async (env) => {
-    await test('命令 /class 打开面板、/week-plan 返回提示词', async () => {
+    await test('命令 /class 只打开 board 面板且只推送 1 条 board', async () => {
+      const before = pushCount(env)
       const opened = await invokeCommand(env, 'class')
       assertEqual(opened.summary, '已打开班级事务台')
       assertEqual(env.opened.at(-1), PANEL_ID)
+      const slice = env.pushes.slice(before)
+      assertEqual(slice.length, 1, `/class 只应推送 1 条，实际 ${slice.length} 条`)
+      assertEqual(slice[0].panelId, PANEL_ID, '/class 推送目标应为 board')
+      assertEqual(slice[0].widgetId, undefined, '/class 不应推送小组件')
+      assertEqual(slice[0].event, EVENT, `/class 推送事件名应为 ${EVENT}`)
+    })
+    await test('命令 /week-plan 返回提示词、未知命令报错', async () => {
       const prompted = await invokeCommand(env, 'week-plan', '只看今天')
       assert(typeof prompted.prompt === 'string' && prompted.prompt.includes('get_overview'), 'prompt 缺少工具名')
       assert(prompted.prompt.includes('今天'), 'prompt 未强调今天')
@@ -1780,14 +1867,40 @@ async function mainTest() {
       }
       assert(threw, '未知命令应报错')
     })
-    await test('所有推送目标/事件名/payload 合法且单次 ≤3 条', async () => {
-      await invokeTool(env, 'add_task', { text: '推送校验事务' })
-      await invokeWidget(env, 'week-tasks', 'quick-add', undefined, { quickTask: '推送校验快速添加' })
-      await invokeTool(env, 'set_announcement', { text: '推送校验通知' })
+    await test('命令 /calendar 打开班级周历页面并返回摘要', async () => {
+      const result = await invokeCommand(env, 'calendar', '')
+      assertEqual(result.summary, '已打开班级周历')
+      assertEqual(env.opened.at(-1), CALENDAR_PANEL_ID)
+    })
+    await test('工具写入 pushAll：4 条（board + calendar + 2 个浮窗）', async () => {
+      const before = pushCount(env)
+      const added = await invokeTool(env, 'add_task', { text: 'pushAll 推送校验' })
+      assertEqual(added.isError, undefined, `工具写入失败：${added.content}`)
+      const slice = assertPushAllSlice(env, before, '工具写入 pushAll')
+      assertEqual(slice.filter((push) => push.panelId === PANEL_ID).length, 1, '应恰好推送 1 次 board')
+      assertEqual(
+        slice.filter((push) => push.panelId === CALENDAR_PANEL_ID).length,
+        1,
+        '应恰好推送 1 次 calendar',
+      )
+      assertEqual(slice.filter((push) => push.widgetId !== undefined).length, 2, '应推送 2 个小组件')
+    })
+    await test('所有推送目标/事件名/payload 合法且单次 ≤5 条', async () => {
+      for (const action of [
+        () => invokeTool(env, 'add_task', { text: '推送校验事务' }),
+        () => invokeWidget(env, 'week-tasks', 'quick-add', undefined, { quickTask: '推送校验快速添加' }),
+        () => invokeTool(env, 'set_announcement', { text: '推送校验通知' }),
+      ]) {
+        const before = pushCount(env)
+        await action()
+        assertPushInvariants(env, before, '推送校验')
+      }
       for (const push of env.pushes) {
         const targets = ['panelId', 'widgetId'].filter((key) => push[key] !== undefined)
         assertEqual(targets.length, 1, `推送目标必须二选一：${JSON.stringify(push)}`)
-        if (push.panelId !== undefined) assertEqual(push.panelId, PANEL_ID)
+        if (push.panelId !== undefined) {
+          assert(PANEL_IDS.includes(push.panelId), `面板目标非法：${push.panelId}`)
+        }
         if (push.widgetId !== undefined) assert(WIDGETS.includes(push.widgetId))
         assert(/^[a-z][a-z0-9_.-]{0,63}$/.test(push.event), `事件名非法：${push.event}`)
         assert(bytes(push.payload ?? null) <= 64 * 1024, 'payload 超过 64 KB')
@@ -1798,15 +1911,14 @@ async function mainTest() {
 
   header('跨天刷新与配置')
   await withEnv({}, async (env) => {
-    await test('同一天 tick 不推送，跨天 tick 推送 3 条', async () => {
+    await test('同一天 tick 不推送，跨天 tick 推送 4 条', async () => {
       const beforeSame = pushCount(env)
       await main.__test.tick(env.ctx)
       assertEqual(pushCount(env), beforeSame, '同一天不应推送')
       main.__test.setNow(new Date(2026, 9, 22, 9, 0, 0, 0).getTime())
       const beforeNext = pushCount(env)
       await main.__test.tick(env.ctx)
-      assertEqual(pushCount(env) - beforeNext, 3, '跨天应推送 3 条')
-      assertPushInvariants(env, beforeNext, '跨天刷新')
+      assertPushAllSlice(env, beforeNext, '跨天 tick')
     })
     await test('跨周后浮窗显示新周且周次递增', async () => {
       main.__test.setNow(new Date(2026, 9, 26, 9, 0, 0, 0).getTime()) // 下周一

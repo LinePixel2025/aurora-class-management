@@ -208,8 +208,12 @@ module.exports = {
     if (name === 'class') {
       await saveView(ctx, 'board')
       await ctx.ui.openPanel(PANEL_ID)
-      await pushPanel(ctx, 'command-open')
+      await pushPanel(ctx, PANEL_ID, 'command-open')
       return { summary: '已打开班级事务台' }
+    }
+    if (name === 'calendar') {
+      await ctx.ui.openPanel(CALENDAR_PANEL_ID)
+      return { summary: '已打开班级周历' }
     }
     if (name === 'week-plan') {
       const extra = typeof args === 'string' && args.trim() !== '' ? `用户的补充要求：${args.trim()}` : ''

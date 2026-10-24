@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>班级周历</title>
+<link rel="stylesheet" href="calendar.css" />
+</head>
+<body>
+<div id="calendar-app">
+  <header class="cal-head">
+    <div class="cal-title-row">
+      <h1 class="cal-title">班级周历</h1>
+      <div class="cal-week-nav">
+        <button id="prev-week" class="cal-nav-btn" type="button">‹ 上一周</button>
+        <button id="this-week" class="cal-nav-btn" type="button">本周</button>
+        <button id="next-week" class="cal-nav-btn" type="button">下一周 ›</button>
+      </div>
+    </div>
+    <div id="week-meta" class="cal-week-meta"></div>
+    <div class="cal-summary">
+      <button id="duty-summary" class="cal-duty" type="button"></button>
+      <div id="stats" class="cal-stats"></div>
+    </div>
+  </header>
+  <!-- 7 天垂直时间线：每天一张 .cal-day 卡片，由 calendar.js 渲染 -->
+  <main id="days" class="cal-days" aria-label="本周 7 天时间线"></main>
+  <section class="cal-announcement">
+    <h2 class="cal-section-title">班级通知</h2>
+    <p id="announcement" class="cal-announcement-text"></p>
+    <textarea id="announcement-input" class="cal-announcement-input" rows="2" placeholder="本周班级通知（留空保存即清空）"></textarea>
+    <button id="save-announcement" class="cal-btn" type="button">保存通知</button>
+  </section>
+  <div id="status" class="cal-status" role="status" aria-live="polite"></div>
+</div>
+<!-- 事务编辑弹层：显隐由 calendar.js 切换 hidden 属性 -->
+<div id="editor" class="cal-modal" hidden>
+  <div class="cal-modal-card" role="dialog" aria-modal="true" aria-labelledby="editor-title">
+    <h2 id="editor-title" class="cal-modal-title">编辑事务</h2>
+    <label class="cal-field">内容<input id="editor-text" type="text" maxlength="200" /></label>
+    <label class="cal-field">截止日期<input id="editor-due-date" type="date" /></label>
+    <label class="cal-field">截止时间<input id="editor-due-time" type="time" /></label>
+    <label class="cal-field">优先级
+      <select id="editor-priority">
+        <option value="high">高</option>
+        <option value="normal">普通</option>
+        <option value="low">低</option>
+      </select>
+    </label>
+    <label class="cal-field">分类<input id="editor-category" type="text" maxlength="12" /></label>
+    <label class="cal-field">负责人<input id="editor-assignee" type="text" maxlength="20" /></label>
+    <label class="cal-check"><input id="editor-done" type="checkbox" /> 已完成</label>
+    <div id="editor-error" class="cal-error"></div>
+    <div class="cal-modal-actions">
+      <button id="editor-save" class="cal-btn cal-btn-primary" type="button">保存</button>
+      <button id="editor-delete" class="cal-btn cal-btn-danger" type="button">删除</button>
+      <button id="editor-cancel" class="cal-btn" type="button">取消</button>
+    </div>
+  </div>
+</div>
+<!-- 安排编辑弹层 -->
+<div id="schedule-editor" class="cal-modal" hidden>
+  <div class="cal-modal-card" role="dialog" aria-modal="true" aria-labelledby="schedule-editor-title">
+    <h2 id="schedule-editor-title" class="cal-modal-title">编辑安排</h2>
+    <label class="cal-field">星期
+      <select id="schedule-weekday">
+        <option value="1">周一</option><option value="2">周二</option><option value="3">周三</option>
+        <option value="4">周四</option><option value="5">周五</option><option value="6">周六</option>
+        <option value="7">周日</option>
+      </select>
+    </label>
+    <label class="cal-field">时间<input id="schedule-time" type="time" /></label>
+    <label class="cal-field">事项<input id="schedule-title" type="text" maxlength="60" /></label>
+    <label class="cal-field">地点<input id="schedule-place" type="text" maxlength="40" /></label>
+    <div id="schedule-error" class="cal-error"></div>
+    <div class="cal-modal-actions">
+      <button id="schedule-save" class="cal-btn cal-btn-primary" type="button">保存</button>
+      <button id="schedule-delete" class="cal-btn cal-btn-danger" type="button">删除</button>
+      <button id="schedule-cancel" class="cal-btn" type="button">取消</button>
+    </div>
+  </div>
+</div>
+<!-- 本周值日弹层 -->
+<div id="duty-editor" class="cal-modal" hidden>
+  <div class="cal-modal-card" role="dialog" aria-modal="true" aria-labelledby="duty-editor-title">
+    <h2 id="duty-editor-title" class="cal-modal-title">本周值日</h2>
+    <label class="cal-field">值日组<select id="duty-group"></select></label>
+    <label class="cal-field">备注<input id="duty-note" type="text" maxlength="60" /></label>
+    <div id="duty-error" class="cal-error"></div>
+    <div class="cal-modal-actions">
+      <button id="duty-save" class="cal-btn cal-btn-primary" type="button">保存</button>
+      <button id="duty-cancel" class="cal-btn" type="button">取消</button>
+    </div>
+  </div>
+</div>
+<script src="calendar.js" defer></script>
+</body>
+</html>
