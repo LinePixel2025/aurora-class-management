@@ -365,20 +365,48 @@ body {
   box-shadow: none;
 }
 
-.wd-duty-members {
-  flex: 1 1 6.67em;
-  min-width: 0;
-  overflow: hidden;
+.wd-duty-flag {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.5em;
+  border: 1px solid var(--cal-line);
+  border-radius: 999px;
   color: var(--cal-muted);
-  font-size: 0.875em;
-  line-height: 1.45;
-  letter-spacing: 0.01em;
-  text-overflow: ellipsis;
+  font-size: 0.79em;
+  line-height: 1.7;
   white-space: nowrap;
 }
 
-.wd-duty-members:empty {
+.wd-duty-flag.is-override {
+  border-color: var(--cal-accent-soft);
+  background: var(--cal-accent-soft);
+  color: var(--cal-accent);
+}
+
+.wd-duty-people {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2em 0.28em;
+  min-width: 0;
+  margin-top: 0.2em;
+}
+
+.wd-duty-people:empty {
   display: none;
+}
+
+.wd-duty-person {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.4em;
+  border-radius: 0.3em;
+  background: var(--cal-duty-soft);
+  color: var(--cal-text-soft);
+  font-size: 0.83em;
+  line-height: 1.6;
+  white-space: nowrap;
 }
 
 .wd-duty-note {
@@ -667,4 +695,60 @@ body {
   .wd-task-del {
     padding: 0 0.42em;
   }
+}
+
+/* ════════════════════════════════════════════
+   10. 每天例行（只读）与安排提醒标记
+   ════════════════════════════════════════════ */
+.wd-routine-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2em;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wd-routine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2em 0.42em;
+  padding: 0.14em 0.5em;
+  border-left: 0.17em solid var(--cal-routine);
+  border-radius: 0.25em;
+  background: var(--cal-routine-soft);
+  font-size: 0.85em;
+  line-height: 1.5;
+}
+
+.wd-routine-time {
+  color: var(--cal-routine);
+  font-family: var(--cal-font-mono);
+  font-weight: 600;
+}
+
+.wd-routine-title {
+  color: var(--cal-text);
+  overflow-wrap: anywhere;
+}
+
+.wd-routine-place {
+  color: var(--cal-muted);
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+
+.wd-remind {
+  flex: 0 0 auto;
+  align-self: center;
+  padding: 0 0.42em;
+  border: 1px solid var(--cal-accent-soft);
+  border-radius: 999px;
+  background: var(--cal-accent-soft);
+  color: var(--cal-accent);
+  font-family: var(--cal-font-body);
+  font-size: 0.72em;
+  line-height: 1.7;
+  white-space: nowrap;
 }

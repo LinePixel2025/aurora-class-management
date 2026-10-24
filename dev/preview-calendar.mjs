@@ -344,6 +344,27 @@ const DEMO_DATA = {
   ],
 }
 
+/** 基础安排：board 级长期数据，按星期铺到每天。 */
+const DEMO_ROUTINES = [
+  { id: 'r1', time: '07:40', title: '早读', place: '教室', note: '', weekdays: [1, 2, 3, 4, 5], createdAt: '2026-09-01T08:00:00.000Z' },
+  { id: 'r2', time: '09:10', title: '课间操', place: '操场', note: '', weekdays: [1, 2, 3, 4, 5], createdAt: '2026-09-01T08:00:00.000Z' },
+  { id: 'r3', time: '10:00', title: '眼保健操', place: '教室', note: '', weekdays: [1, 2, 3, 4, 5], createdAt: '2026-09-01T08:00:00.000Z' },
+  { id: 'r4', time: '16:30', title: '教室通风与关灯', place: '', note: '最后离开的一组负责', weekdays: [1, 2, 3, 4, 5, 6], createdAt: '2026-09-01T08:00:00.000Z' },
+]
+
+DEMO_DATA.routines = DEMO_ROUTINES
+for (const day of DEMO_DATA.days) {
+  day.routines = DEMO_ROUTINES.filter(function (routine) {
+    return routine.weekdays.includes(day.weekday)
+  })
+}
+for (const day of DEMO_DATA.days.filter(function (item) { return item.weekday === 3 })) {
+  for (const entry of day.schedule) {
+    entry.remind = true
+    entry.remindLead = 15
+  }
+}
+
 /** 生成 mock 脚本：只读 window.auroraPlugin，request 异步返回演示数据。 */
 function mockScript() {
   const json = JSON.stringify(DEMO_DATA).replace(/</g, '\\u003c')

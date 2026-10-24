@@ -416,6 +416,7 @@
     disarmDelete()
     renderHead(data)
     renderTasks(data)
+    renderRoutines(data)
     renderSchedule(data)
   }
 
@@ -623,6 +624,44 @@
     }
   }
 
+  function renderRoutines(data) {
+    const section = elements.routineSection
+    if (section === null || section === undefined) return
+    const source = Array.isArray(data.routines) ? data.routines : []
+    const routines = []
+    for (const item of source) {
+      if (item === null || typeof item !== 'object') continue
+      const title = trimmedOf(item.title)
+      if (title === '') continue
+      routines.push({ time: trimmedOf(item.time), title: title, place: trimmedOf(item.place) })
+    }
+    section.hidden = routines.length === 0
+    const list = elements.routineList
+    if (list === null || list === undefined) return
+    clearChildren(list)
+    for (const routine of routines) {
+      const item = document.createElement('li')
+      const row = document.createElement('div')
+      row.className = 'wd-routine'
+      const time = document.createElement('span')
+      time.className = 'wd-routine-time'
+      time.textContent = routine.time === '' ? '例行' : routine.time
+      row.appendChild(time)
+      const title = document.createElement('span')
+      title.className = 'wd-routine-title'
+      title.textContent = routine.title
+      row.appendChild(title)
+      if (routine.place !== '') {
+        const place = document.createElement('span')
+        place.className = 'wd-routine-place'
+        place.textContent = routine.place
+        row.appendChild(place)
+      }
+      item.appendChild(row)
+      list.appendChild(item)
+    }
+  }
+
   function readSchedule(data) {
     const source = Array.isArray(data.schedule) ? data.schedule : []
     const entries = []
@@ -635,6 +674,8 @@
         time: trimmedOf(item.time),
         title: trimmedOf(item.title),
         place: trimmedOf(item.place),
+        remind: item.remind === true,
+        remindLead: typeof item.remindLead === 'number' && Number.isFinite(item.remindLead) ? Math.trunc(item.remindLead) : null,
       })
     }
     return entries
@@ -701,6 +742,13 @@
       row.appendChild(place)
     }
 
+    if (entry.remind === true) {
+      const remind = document.createElement('span')
+      remind.className = 'wd-remind'
+      remind.textContent = entry.remindLead === null ? '到点前提醒' : '提前 ' + entry.remindLead + ' 分钟'
+      row.appendChild(remind)
+    }
+
     item.appendChild(row)
     return item
   }
@@ -758,6 +806,8 @@
     elements.doneList = document.getElementById('done-list')
     elements.scheduleList = document.getElementById('schedule-list')
     elements.scheduleMore = document.getElementById('schedule-more')
+    elements.routineSection = document.getElementById('routine-section')
+    elements.routineList = document.getElementById('routine-list')
   }
 
   function bindEvents() {

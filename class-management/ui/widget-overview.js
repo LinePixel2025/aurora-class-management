@@ -275,6 +275,7 @@
   function renderAll(data) {
     renderHead(data)
     renderDuty(data)
+    renderRoutines(data)
     renderSchedule(data)
     renderAnnouncement(data)
   }
@@ -362,16 +363,72 @@
             return member !== ''
           })
       : []
+    const weekNumber = countOf(data.weekNumber)
+    const weekTitle = (raw.isCurrentWeek === true ? '本周值日' : '该周值日') + (weekNumber > 0 ? ' · 第 ' + weekNumber + ' 周' : '')
+    setText(elements.dutyTitle, weekTitle)
 
     if (elements.dutyGroup !== null && elements.dutyGroup !== undefined) {
       elements.dutyGroup.textContent = groupName === '' ? '待安排' : groupName
       elements.dutyGroup.classList.toggle('is-empty', groupName === '')
     }
-    setText(elements.dutyMembers, members.join(' · '))
+
+    const override = raw.hasOverrideGroup === true
+    if (elements.dutyFlag !== null && elements.dutyFlag !== undefined) {
+      elements.dutyFlag.textContent = override === true ? '本周指定' : '按周轮换'
+      elements.dutyFlag.classList.toggle('is-override', override === true)
+    }
+
     if (elements.dutyMembers !== null && elements.dutyMembers !== undefined) {
+      clearChildren(elements.dutyMembers)
+      for (const member of members) {
+        const chip = document.createElement('span')
+        chip.className = 'wd-duty-person'
+        chip.textContent = member
+        elements.dutyMembers.appendChild(chip)
+      }
       elements.dutyMembers.setAttribute('title', members.join('、'))
     }
     setText(elements.dutyNote, trimmedOf(raw.note))
+  }
+
+  function renderRoutines(data) {
+    const section = elements.routineSection
+    if (section === null || section === undefined) return
+    const source = Array.isArray(data.routines) ? data.routines : []
+    const routines = []
+    for (const item of source) {
+      if (item === null || typeof item !== 'object') continue
+      const title = trimmedOf(item.title)
+      if (title === '') continue
+      routines.push({ time: trimmedOf(item.time), title: title, place: trimmedOf(item.place) })
+    }
+    section.hidden = routines.length === 0
+    const list = elements.routineList
+    if (list === null || list === undefined) return
+    clearChildren(list)
+    for (const routine of routines) list.appendChild(buildRoutineRow(routine))
+  }
+
+  function buildRoutineRow(routine) {
+    const item = document.createElement('li')
+    const row = document.createElement('div')
+    row.className = 'wd-routine'
+    const time = document.createElement('span')
+    time.className = 'wd-routine-time'
+    time.textContent = routine.time === '' ? '例行' : routine.time
+    row.appendChild(time)
+    const title = document.createElement('span')
+    title.className = 'wd-routine-title'
+    title.textContent = routine.title
+    row.appendChild(title)
+    if (routine.place !== '') {
+      const place = document.createElement('span')
+      place.className = 'wd-routine-place'
+      place.textContent = routine.place
+      row.appendChild(place)
+    }
+    item.appendChild(row)
+    return item
   }
 
   function readSchedule(data) {
@@ -386,6 +443,8 @@
         time: trimmedOf(item.time),
         title: trimmedOf(item.title),
         place: trimmedOf(item.place),
+        remind: item.remind === true,
+        remindLead: typeof item.remindLead === 'number' && Number.isFinite(item.remindLead) ? Math.trunc(item.remindLead) : null,
       })
     }
     // 后端已按周几/时间排好序，这里再兜底排一次，保证“前 3 项”稳定。
@@ -429,6 +488,13 @@
       place.className = 'cal-schedule-place'
       place.textContent = entry.place
       row.appendChild(place)
+    }
+
+    if (entry.remind === true) {
+      const remind = document.createElement('span')
+      remind.className = 'wd-remind'
+      remind.textContent = entry.remindLead === null ? '到点前提醒' : '提前 ' + entry.remindLead + ' 分钟'
+      row.appendChild(remind)
     }
 
     item.appendChild(row)
@@ -490,9 +556,13 @@
     elements.completionLabel = document.getElementById('completion-label')
     elements.progress = document.getElementById('progress')
     elements.progressFill = document.getElementById('progress-fill')
+    elements.dutyTitle = document.getElementById('duty-title')
     elements.dutyGroup = document.getElementById('duty-group')
+    elements.dutyFlag = document.getElementById('duty-flag')
     elements.dutyMembers = document.getElementById('duty-members')
     elements.dutyNote = document.getElementById('duty-note')
+    elements.routineSection = document.getElementById('routine-section')
+    elements.routineList = document.getElementById('routine-list')
     elements.scheduleList = document.getElementById('schedule-list')
     elements.scheduleMore = document.getElementById('schedule-more')
     elements.announcement = document.getElementById('announcement')

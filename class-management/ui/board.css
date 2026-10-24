@@ -260,6 +260,19 @@
 .board-duty-pill {
   align-self: flex-start;
   max-width: 100%;
+  flex-wrap: wrap;
+  gap: 5px 6px;
+}
+
+.board-duty-prefix {
+  color: var(--cal-muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.board-duty-inline-note {
+  color: var(--cal-muted);
+  overflow-wrap: anywhere;
 }
 
 /* ════════════════════════════════════════════
@@ -524,16 +537,47 @@
   overflow-wrap: anywhere;
 }
 
-.board-members {
-  margin: 0;
-  color: var(--cal-text-soft);
-  font-size: 12.5px;
-  line-height: 1.6;
-  overflow-wrap: anywhere;
+.board-duty-week {
+  margin-left: auto;
+  color: var(--cal-faint);
+  font-family: var(--cal-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
 }
 
-.board-members:empty {
-  display: none;
+.board-duty-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+/* 值日视图是这组信息的主场，组名徽章放大一档，投屏时后排也能一眼看到。 */
+.board-duty-hero .cal-duty-badge {
+  padding: 3px 12px;
+  font-size: 15px;
+}
+
+.board-duty-people {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 5px;
+  margin-top: 2px;
+}
+
+.board-duty-people .board-hint {
+  margin: 0;
+}
+
+.board-duty-note {
+  margin: 6px 0 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--cal-duty);
+  color: var(--cal-text-soft);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
 }
 
 .board-rot {
@@ -643,6 +687,88 @@
   justify-content: flex-end;
   gap: 2px;
   margin-top: 1px;
+}
+
+.board-remind-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.board-lead-field {
+  flex: 0 0 auto;
+  width: 116px;
+}
+
+.board-routine-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.board-routine-row {
+  align-items: center;
+  gap: 2px 8px;
+}
+
+.board-routine-days {
+  flex: 0 1 auto;
+  color: var(--cal-muted);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.board-routine-row .board-schedule-actions {
+  margin-top: 0;
+  margin-left: auto;
+}
+
+.board-days-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.board-days-label {
+  color: var(--cal-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.board-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+
+.board-day {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border: 1px solid var(--cal-line);
+  border-radius: 999px;
+  color: var(--cal-text-soft);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.board-day input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--cal-routine);
+  cursor: pointer;
+}
+
+.board-day.is-on {
+  border-color: var(--cal-routine);
+  background: var(--cal-routine-soft);
+  color: var(--cal-text);
 }
 
 /* ════════════════════════════════════════════

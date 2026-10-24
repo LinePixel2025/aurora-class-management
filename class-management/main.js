@@ -11,7 +11,7 @@ const { clip } = require('./lib/util')
 const { nowMs, setNowForTests, resetNowForTests, todayKey, weekKeyFromOffset, weekdayLabel } = require('./lib/time')
 const { DataError, ensureBoard } = require('./lib/state')
 const ops = require('./lib/ops')
-const { overViewText, taskListText, planSummaryText } = require('./lib/text')
+const { overViewText, taskListText, planSummaryText, routineReport } = require('./lib/text')
 const { pushAll, pushPanel, WIDGET_IDS, PANEL_ID } = require('./lib/push')
 const { handleBoardPanel } = require('./lib/board-page')
 const { handleWidgetPage } = require('./lib/widget-page')
@@ -121,7 +121,7 @@ async function runTool(name, input, ctx) {
     return ok(
       `已添加安排：${result.weekCtx.label} ${weekdayLabel(result.entry.weekday)}${time} ${result.entry.title}${
         result.entry.place === '' ? '' : ` @ ${result.entry.place}`
-      }\nid=${result.entry.id}`,
+      }${result.entry.remind === true ? '｜已开启到点提醒' : ''}\nid=${result.entry.id}`,
       '安排已添加',
     )
   }
@@ -130,6 +130,17 @@ async function runTool(name, input, ctx) {
     const result = await ops.deleteSchedule(ctx, input)
     await pushAll(ctx, 'tool-delete-schedule')
     return ok(`已删除安排：${result.entry.title}（${result.weekCtx.label}）`, '安排已删除')
+  }
+
+  if (name === 'set_routines') {
+    const result = await ops.setRoutines(ctx, input)
+    await pushAll(ctx, 'tool-set-routines')
+    return ok(
+      result.routines.length === 0
+        ? '已清空基础安排。'
+        : `已保存 ${result.routines.length} 条基础安排：\n${routineReport({ routines: result.routines }).join('\n')}`,
+      `基础安排已保存（${result.routines.length} 条）`,
+    )
   }
 
   if (name === 'set_announcement') {

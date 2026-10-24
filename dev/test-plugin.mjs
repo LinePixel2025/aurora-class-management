@@ -6,8 +6,8 @@
  *
  * - mock 宿主 ctx，页面型面板 / 页面型小组件的 params 是**直接对象**（不再套 `{ params, values }`）；
  * - 保留 v2.0.0 有效检查：时间、存储与串行写、旧数据迁移、7 天历史清理、整周值日、
- *   12 个 Agent 工具、3 条命令、推送目标 / 条数（2 面板 + 2 小组件 = 4 条）、跨天 / 跨周刷新、
- *   可选通知（每日简报 / 截止提醒 / 周一值日 / 去重 / 重启不重发）、整周计划回滚、容量修剪、
+ *   13 个 Agent 工具、3 条命令、推送目标 / 条数（2 面板 + 2 小组件 = 4 条）、跨天 / 跨周刷新、
+ *   可选通知（每日简报 / 截止提醒 / 周一值日 / 安排到点前提醒 / 去重 / 重启不重发）、整周计划回滚、容量修剪、
  *   宿主原版 zod 清单解析；
  * - 新增 v2.1.0 检查：清单页面化（2 面板 + 2 桌面小组件 entry，无 schema）、页面静态约束
  *   （无内联脚本 / 内联事件 / fetch / localStorage / 外链，相对资源存在）、班级事务台页面 API
@@ -212,8 +212,10 @@ function createContext(options) {
   const opened = []
   const toasts = []
   const notifications = []
-  // 宿主 notify() 的返回值；默认成功，false 用于覆盖通知失败路径
+  const banners = []
+  // 宿主 notify() / banner() 的返回值；默认成功，false 用于覆盖投递失败路径
   const notifyResult = settings.notifyResult !== false
+  const bannerResult = settings.bannerResult !== false
   const config = {
     className: '高二(15)班',
     teacher: '王老师',
@@ -224,10 +226,12 @@ function createContext(options) {
     notifyDue: false,
     notifyDueLead: 10,
     notifyDuty: false,
+    notifySchedule: false,
+    notifyScheduleLead: 10,
     ...(settings.config || {}),
   }
   const ctx = {
-    plugin: { id: PLUGIN_ID, version: '2.1.2', root: PLUGIN, dataDir: PLUGIN, isDev: true },
+    plugin: { id: PLUGIN_ID, version: '2.2.0', root: PLUGIN, dataDir: PLUGIN, isDev: true },
     config,
     storage: {
       async get(key) {
@@ -255,6 +259,16 @@ function createContext(options) {
       notifications.push({ title: input.title, body: input.body })
       return notifyResult
     },
+    // 流光提醒是 Aurora 0.5.6+ 能力；noBanner 用来模拟旧宿主（没有 ctx.banner）
+    ...(settings.noBanner === true
+      ? {}
+      : {
+          banner: async (payload) => {
+            const input = payload !== null && typeof payload === 'object' ? payload : {}
+            banners.push({ title: input.title, body: input.body, speak: input.speak })
+            return bannerResult
+          },
+        }),
     log(level, message, detail) {
       logs.push({ level, message, detail })
     },
@@ -272,7 +286,7 @@ function createContext(options) {
     },
     signal: new AbortController().signal,
   }
-  return { ctx, store, pushes, logs, opened, toasts, notifications }
+  return { ctx, store, pushes, logs, opened, toasts, notifications, banners }
 }
 
 function pushCount(env) {
@@ -663,6 +677,12 @@ async function addTask(env, input) {
   return result
 }
 
+async function addSchedule(env, input) {
+  const result = await invokeTool(env, 'add_schedule', input)
+  assertEqual(result.isError, undefined, `预置安排失败：${result.content}`)
+  return result
+}
+
 async function mainTest() {
   const manifest = JSON.parse(fs.readFileSync(path.join(PLUGIN, 'manifest.json'), 'utf8'))
   const hostManifestParser = await loadHostManifestParser()
@@ -673,9 +693,9 @@ async function mainTest() {
   // ═════════════════════════ 清单 ═════════════════════════
 
   header('清单与页面化声明')
-  await test('清单基础字段（版本 2.1.2 / 入口 / 激活方式）', async () => {
+  await test('清单基础字段（版本 2.2.0 / 入口 / 激活方式）', async () => {
     assertEqual(manifest.id, PLUGIN_ID)
-    assertEqual(manifest.version, '2.1.2')
+    assertEqual(manifest.version, '2.2.0')
     assertEqual(manifest.apiVersion, 1)
     assertEqual(manifest.minAuroraVersion, '0.5.3')
     assertEqual(manifest.main, 'main.js')
@@ -698,8 +718,8 @@ async function mainTest() {
     ]
     assertEqual([...manifest.permissions].sort().join(','), [...expected].sort().join(','))
   })
-  await test('工具数量与命名/参数/只读标记（12 个不变）', async () => {
-    assertEqual(manifest.contributes.tools.length, 12)
+  await test('工具数量与命名/参数/只读标记（13 个不变）', async () => {
+    assertEqual(manifest.contributes.tools.length, 13)
     const expectedNames = [
       'add_schedule',
       'add_task',
@@ -712,6 +732,7 @@ async function mainTest() {
       'set_announcement',
       'set_duty_groups',
       'set_duty_week',
+      'set_routines',
       'update_task',
     ]
     const names = new Set()
@@ -741,9 +762,9 @@ async function mainTest() {
       assert(typeof command.description === 'string' && command.description !== '', `${command.name} 缺少描述`)
     }
   })
-  await test('配置字段 9 个（含通知相关项）', async () => {
+  await test('配置字段 11 个（含通知相关项）', async () => {
     const keys = manifest.config.fields.map((field) => field.key)
-    assertEqual(keys.length, 9)
+    assertEqual(keys.length, 11)
     const expected = [
       'className',
       'teacher',
@@ -754,6 +775,8 @@ async function mainTest() {
       'notifyDue',
       'notifyDueLead',
       'notifyDuty',
+      'notifySchedule',
+      'notifyScheduleLead',
     ]
     assertEqual([...keys].sort().join(','), expected.slice().sort().join(','))
     for (const field of manifest.config.fields) {
@@ -986,6 +1009,56 @@ async function mainTest() {
       assertEqual(board.version, 2)
       assertEqual(board.duty.groups.length, 4)
       assertEqual(Object.keys(board.weeks).includes('不是日期'), false)
+    })
+  })
+
+  await test('安排提醒字段净化：严格布尔、可选提前量、未知键丢弃', async () => {
+    const strict = stateLib.sanitizeSchedule({
+      weekday: 3,
+      title: '班会',
+      time: '08:00',
+      remind: 'yes',
+      remindLead: '25',
+      foo: 'bar',
+    })
+    assertEqual(strict.remind, false, 'remind 只认真正的 true')
+    assertEqual(strict.remindLead, 25, '数字字符串应被接受')
+    assertEqual(hasOwn(strict, 'foo'), false, '未知键必须丢弃')
+    const blank = stateLib.sanitizeSchedule({ weekday: 3, title: '班会', remind: true, remindLead: '' })
+    assertEqual(blank.remind, true)
+    assertEqual(hasOwn(blank, 'remindLead'), false, '留空的提前量不该落成 0，否则失去「用默认」语义')
+    assertEqual(stateLib.sanitizeSchedule({ weekday: 3, title: '班会', remind: true, remindLead: 999 }).remindLead, 120)
+    assertEqual(stateLib.sanitizeSchedule({ weekday: 3, title: '班会', remind: true, remindLead: -5 }).remindLead, 0)
+  })
+
+  await test('基础安排净化：星期去重升序、缺省周一~周五、id 唯一、往返不变', async () => {
+    const board = stateLib.createBoard()
+    board.routines = [
+      { title: '早读', time: '07:40', weekdays: [1, 2, 3, 4, 5] },
+      { title: '早读', time: '07:40' },
+      { title: '   ', time: '09:00' },
+      { title: '眼保健操', time: '10:00', weekdays: [7, 3, 3, '4', 8] },
+    ]
+    const clean = stateLib.sanitizeBoard(board).board
+    assertEqual(clean.routines.length, 3, '空标题应被丢弃，其余保留')
+    assertEqual(clean.routines[2].weekdays.join(','), '3,4,7', '星期应过滤非法值、去重并升序')
+    assertEqual(clean.routines[1].weekdays.join(','), '1,2,3,4,5', '缺省星期应为周一~周五')
+    assertEqual(new Set(clean.routines.map((item) => item.id)).size, 3, 'id 必须唯一')
+    assertEqual(stateLib.sanitizeBoard(clean).changed, false, '净化后的 board 往返不应再被判为已变更')
+  })
+
+  await test('旧数据缺 routines 时启动补齐并落盘', async () => {
+    await withEnv({}, async (env) => {
+      await env.ctx.storage.set('board.v1', {
+        version: 2,
+        anchorMonday: '2026-10-19',
+        duty: { groups: stateLib.seedGroups(), order: ['g1', 'g2', 'g3', 'g4'] },
+        weeks: {},
+      })
+      const board = await stateLib.ensureBoard(env.ctx)
+      assert(Array.isArray(board.routines), '未补齐 routines 字段')
+      assertEqual(board.routines.length, 0)
+      assertEqual(env.store.get('board.v1').routines.length, 0, '补齐结果未落盘')
     })
   })
 
@@ -1291,6 +1364,95 @@ async function mainTest() {
     })
   })
 
+  // ═════════════════════════ 基础安排（每天例行）═════════════════════════
+
+  header('基础安排（每天例行）')
+  await withEnv({}, async (env) => {
+    await test('set_routines 整表写入、进总览并推送 4 条', async () => {
+      const before = pushCount(env)
+      const result = await invokeTool(env, 'set_routines', {
+        routines: [
+          { time: '07:40', title: '早读', place: '教室', weekdays: [1, 2, 3, 4, 5] },
+          { time: '16:30', title: '教室通风与关灯', note: '最后离开的一组负责', weekdays: [1, 2, 3, 4, 5, 6] },
+        ],
+      })
+      assertEqual(result.isError, undefined)
+      assertPushInvariants(env, before, 'set_routines')
+      assert(result.content.includes('已保存 2 条基础安排'), `工具摘要不明确：${result.content}`)
+      const overview = await invokeTool(env, 'get_overview', {})
+      assert(overview.content.includes('早读'), '总览缺少基础安排')
+      assert(overview.content.includes('周一~周五'), '总览缺少适用星期')
+    })
+    await test('set_routines 空数组清空、超上限报错且不落盘', async () => {
+      await invokeTool(env, 'set_routines', { routines: [{ title: '眼保健操', time: '10:00' }] })
+      const tooMany = await invokeTool(env, 'set_routines', {
+        routines: Array.from({ length: 31 }, (_item, index) => ({ title: `例行 ${index}` })),
+      })
+      assertEqual(tooMany.isError, true, '超过 30 条应报错')
+      assertEqual(env.store.get('board.v1').routines.length, 1, '失败的整表写入不应落盘')
+      const cleared = await invokeTool(env, 'set_routines', { routines: [] })
+      assertEqual(cleared.isError, undefined)
+      assertEqual(env.store.get('board.v1').routines.length, 0, '空数组应清空基础安排')
+    })
+    await test('周历按星期把基础安排铺到对应日卡', async () => {
+      await invokeTool(env, 'set_routines', {
+        routines: [
+          { time: '07:40', title: '早读', weekdays: [1, 3, 5] },
+          { time: '16:30', title: '关灯', weekdays: [7] },
+        ],
+      })
+      const grid = await loadCalendar(env, {})
+      assertEqual(calendarDayOf(grid, '2026-10-19').routines.length, 1, '周一应有一条例行')
+      assertEqual(calendarDayOf(grid, '2026-10-19').routines[0].title, '早读')
+      assertEqual(calendarDayOf(grid, '2026-10-20').routines.length, 0, '周二没有排到例行')
+      assertEqual(calendarDayOf(grid, '2026-10-25').routines[0].title, '关灯', '周日应拿到自己的例行事项')
+      assertEqual(grid.routines.length, 2, '整周数据应带上全部基础安排')
+    })
+    await test('事务台与小组件只拿到今天（周三）的基础安排', async () => {
+      const data = await loadBoard(env, { view: 'board' })
+      assertEqual(data.routines.length, 2)
+      assertEqual(data.todayRoutines.length, 1, '今天只有早读')
+      assertEqual(data.todayRoutines[0].title, '早读')
+      const widget = await loadWidget(env, 'week-overview')
+      assertEqual(widget.routines.length, 1, '速览应只显示今天的例行')
+      assertEqual(widget.routines[0].title, '早读')
+    })
+    await test('面板逐条增改删基础安排并回显', async () => {
+      const before = pushCount(env)
+      const added = await invokeBoard(env, 'add-routine', {
+        time: '09:10',
+        title: '课间操',
+        place: '操场',
+        weekdays: [1, 2, 3, 4, 5],
+      })
+      expectBoardOk(added, 'add-routine')
+      assertPushAllSlice(env, before, 'add-routine')
+      const created = added.data.routines.find((item) => item.title === '课间操')
+      assert(created !== undefined, '新增的基础安排未回显')
+      const updated = await invokeBoard(env, 'update-routine', { id: created.id, time: '09:20', weekdays: [2, 4] })
+      expectBoardOk(updated, 'update-routine')
+      const changed = updated.data.routines.find((item) => item.id === created.id)
+      assertEqual(changed.time, '09:20')
+      assertEqual(changed.weekdays.join(','), '2,4')
+      assertEqual(updated.data.todayRoutines.length, 1, '课间操改到周二/周四后，今天只剩早读')
+      assertEqual(updated.data.todayRoutines[0].title, '早读')
+      const deleted = await invokeBoard(env, 'delete-routine', { id: created.id })
+      expectBoardOk(deleted, 'delete-routine')
+      assertEqual(deleted.data.routines.length, 2, '删除后应剩两条')
+    })
+    await test('面板基础安排动作的非法输入不落盘', async () => {
+      const before = pushCount(env)
+      const noTitle = await invokeBoard(env, 'add-routine', { time: '07:00' })
+      expectBoardError(noTitle, 'add-routine 空标题')
+      const noId = await invokeBoard(env, 'update-routine', { id: ' ', time: '07:00' })
+      expectBoardError(noId, 'update-routine 缺 id')
+      const missing = await invokeBoard(env, 'delete-routine', { id: 'r-not-exist' })
+      expectBoardError(missing, 'delete-routine 未知 id')
+      assertEqual(pushCount(env), before, '失败的写动作不应推送')
+      assertEqual(env.store.get('board.v1').routines.length, 2, '失败的写动作不应改数据')
+    })
+  })
+
   // ═════════════════════════ 每日清空与 7 天历史 ═════════════════════════
 
   header('每日清空与 7 天历史')
@@ -1333,6 +1495,7 @@ async function mainTest() {
     await addTask(env, { text: '周一 08:00 截止的作业', dueTime: '08:00' })
     await checkNotifications(env)
     assertEqual(env.notifications.length, 0, '默认全关时不应产生任何通知')
+    assertEqual(env.banners.length, 0, '默认全关时不应产生任何流光提醒')
     assertEqual(env.store.has('notify.v1'), false, '默认全关时不应写入 notify.v1')
   })
   await test('每日简报到时后只发一次', async () => {
@@ -1368,32 +1531,34 @@ async function mainTest() {
     await checkNotifications(env)
     assertEqual(env.notifications.length, 2, '同一天内仍不应重复发送每日简报')
   })
-  await test('截止提醒：未到提醒点不发，到时只发一次', async () => {
+  await test('截止提醒走流光：未到提醒点不发，到时只发一次', async () => {
     const env = atTime(new Date(2026, 9, 21, 7, 49, 0, 0), { notifyDue: true, notifyDueLead: 10 })
     await addTask(env, { text: '交英语作业', dueTime: '08:00' }) // 提前 10 分钟 = 07:50
     await checkNotifications(env)
-    assertEqual(env.notifications.length, 0, '未到 08:00 - 10 分钟不应提醒')
+    assertEqual(env.banners.length, 0, '未到 08:00 - 10 分钟不应提醒')
 
     main.__test.setNow(new Date(2026, 9, 21, 7, 55, 0, 0).getTime())
     await checkNotifications(env)
-    assertEqual(env.notifications.length, 1, '已到提醒点应发一条截止提醒')
-    assertEqual(env.notifications[0].title, '事务即将截止')
+    assertEqual(env.banners.length, 1, '已到提醒点应发一条截止流光提醒')
+    assertEqual(env.notifications.length, 0, '准点类提醒不该再走系统通知中心')
+    assertEqual(env.banners[0].title, '事务即将截止')
+    assertEqual(env.banners[0].speak, true, '截止提醒应请求朗读（由宿主总闸决定是否朗读）')
     const task = taskByText(env, '交英语作业')
     assert(task !== null, '找不到预置事务')
     const saved = env.store.get('notify.v1')
     assert(saved !== undefined && saved.due !== null && typeof saved.due === 'object', '未记录截止提醒去重状态')
     assert(hasOwn(saved.due, task.id), '未记录该事务今天已提醒')
     await checkNotifications(env)
-    assertEqual(env.notifications.length, 1, '重复调用不应重复发送截止提醒')
+    assertEqual(env.banners.length, 1, '重复调用不应重复发送截止提醒')
   })
   await test('notifyDueLead 为 0 时按 0 分钟提醒（不回落成 10）', async () => {
     const env = atTime(new Date(2026, 9, 21, 7, 55, 0, 0), { notifyDue: true, notifyDueLead: 0 })
     await addTask(env, { text: '交化学作业', dueTime: '08:00' })
     await checkNotifications(env)
-    assertEqual(env.notifications.length, 0, '提前量为 0 时 07:55 不应提醒')
+    assertEqual(env.banners.length, 0, '提前量为 0 时 07:55 不应提醒')
     main.__test.setNow(new Date(2026, 9, 21, 8, 0, 0, 0).getTime())
     await checkNotifications(env)
-    assertEqual(env.notifications.length, 1, '提前量为 0 时 08:00 应提醒')
+    assertEqual(env.banners.length, 1, '提前量为 0 时 08:00 应提醒')
   })
   await test('多条同时到点的截止任务合并为一条摘要', async () => {
     const env = atTime(new Date(2026, 9, 21, 7, 55, 0, 0), { notifyDue: true, notifyDueLead: 10 })
@@ -1402,10 +1567,10 @@ async function mainTest() {
       await addTask(env, { text, dueTime: '08:00' })
     }
     await checkNotifications(env)
-    assertEqual(env.notifications.length, 1, '多条任务应合并成一条摘要，而不是逐条发送')
-    assertEqual(env.notifications[0].title, '事务即将截止')
+    assertEqual(env.banners.length, 1, '多条任务应合并成一条摘要，而不是逐条发送')
+    assertEqual(env.banners[0].title, '事务即将截止')
     for (const text of texts) {
-      assert(env.notifications[0].body.includes(text), `截止摘要缺少「${text}」：${env.notifications[0].body}`)
+      assert(env.banners[0].body.includes(text), `截止摘要缺少「${text}」：${env.banners[0].body}`)
     }
   })
   await test('截止提醒摘要最多汇总 3 条，第 4 条下个检查补发', async () => {
@@ -1416,16 +1581,16 @@ async function mainTest() {
       await addTask(env, { text: texts[index], dueTime: times[index] })
     }
     await checkNotifications(env)
-    assertEqual(env.notifications.length, 1, '同一轮到点任务应合并为一条摘要')
-    const first = env.notifications[0]
+    assertEqual(env.banners.length, 1, '同一轮到点任务应合并为一条摘要')
+    const first = env.banners[0]
     assertEqual(first.title, '事务即将截止')
     for (const text of texts.slice(0, 3)) {
       assert(first.body.includes(text), `首条摘要应包含前 3 条事务「${text}」：${first.body}`)
     }
     assert(!first.body.includes(texts[3]), `首条摘要最多 3 条，不应包含第 4 条：${first.body}`)
     await checkNotifications(env)
-    assertEqual(env.notifications.length, 2, '第 4 条应在下一轮检查补发')
-    const second = env.notifications[1]
+    assertEqual(env.banners.length, 2, '第 4 条应在下一轮检查补发')
+    const second = env.banners[1]
     assert(second.body.includes(texts[3]), `补发摘要应包含第 4 条：${second.body}`)
     for (const text of texts.slice(0, 3)) {
       assert(!second.body.includes(text), `已提醒的事务不应重复汇总「${text}」：${second.body}`)
@@ -1469,6 +1634,13 @@ async function mainTest() {
     assertEqual(defaults.notifyDue, false)
     assertEqual(defaults.notifyDueLead, 10)
     assertEqual(defaults.notifyDuty, false)
+    assertEqual(defaults.notifySchedule, false)
+    assertEqual(defaults.notifyScheduleLead, 10)
+    assertEqual(stateLib.readSettings({ notifySchedule: 'yes' }).notifySchedule, false)
+    assertEqual(stateLib.readSettings({ notifyScheduleLead: 999 }).notifyScheduleLead, 120)
+    assertEqual(stateLib.readSettings({ notifyScheduleLead: -5 }).notifyScheduleLead, 0)
+    assertEqual(stateLib.readSettings({ notifyScheduleLead: 0 }).notifyScheduleLead, 0)
+    assertEqual(stateLib.readSettings({ notifyScheduleLead: '' }).notifyScheduleLead, 10)
     assertEqual(stateLib.readSettings({ notifyTime: '25:99' }).notifyTime, '07:30')
     assertEqual(stateLib.readSettings({ notifyTime: 'not-a-time' }).notifyTime, '07:30')
     assertEqual(stateLib.readSettings({ notifyTime: '08:05' }).notifyTime, '08:05')
@@ -1480,13 +1652,13 @@ async function mainTest() {
     const env = atTime(new Date(2026, 9, 21, 7, 55, 0, 0), { notifyDue: true, notifyDueLead: 10 })
     await addTask(env, { text: '明天交实验报告', dueDate: '2026-10-22', dueTime: '08:00' })
     await checkNotifications(env)
-    assertEqual(env.notifications.length, 0, '明天截止的任务不应今天提醒')
+    assertEqual(env.banners.length, 0, '明天截止的任务不应今天提醒')
   })
   await test('过了截止时间不再提醒', async () => {
     const env = atTime(new Date(2026, 9, 21, 8, 5, 0, 0), { notifyDue: true, notifyDueLead: 10 })
     await addTask(env, { text: '已经过期的作业', dueTime: '08:00' })
     await checkNotifications(env)
-    assertEqual(env.notifications.length, 0, '08:05 不应再提醒 08:00 截止的任务')
+    assertEqual(env.banners.length, 0, '08:05 不应再提醒 08:00 截止的任务')
   })
   await test('昨天登记、今天截止的任务仍会提醒', async () => {
     main.__test.setNow(new Date(2026, 9, 20, 9, 0, 0, 0).getTime())
@@ -1497,7 +1669,7 @@ async function mainTest() {
     assertEqual(task.date, '2026-10-20')
     main.__test.setNow(new Date(2026, 9, 21, 7, 55, 0, 0).getTime())
     await checkNotifications(env)
-    assertEqual(env.notifications.length, 1, '昨天登记、今天截止的任务应被提醒')
+    assertEqual(env.banners.length, 1, '昨天登记、今天截止的任务应被提醒')
   })
   await test('ctx.notify 返回 false：不抛错并记录 warn', async () => {
     main.__test.setNow(new Date(2026, 9, 21, 7, 31, 0, 0).getTime())
@@ -1517,6 +1689,112 @@ async function mainTest() {
     for (const [key, value] of snapshot) await second.ctx.storage.set(key, value)
     await checkNotifications(second)
     assertEqual(second.notifications.length, 0, '重启后同一存储不应重复发送当天简报')
+  })
+  await test('安排提醒总开关关闭：不发送也不写 notify.v1', async () => {
+    const env = atTime(new Date(2026, 9, 21, 7, 55, 0, 0), { notifySchedule: false, notifyScheduleLead: 10 })
+    await addSchedule(env, { weekday: 3, time: '08:00', title: '班会', remind: true })
+    await checkNotifications(env)
+    assertEqual(env.banners.length, 0, '未开启安排提醒时不应发送')
+    assertEqual(env.store.has('notify.v1'), false, '未开启安排提醒时不应写入去重状态')
+  })
+  await test('安排到点前只提醒一次（走流光，沿用全局默认提前量）', async () => {
+    const env = atTime(new Date(2026, 9, 21, 7, 49, 0, 0), { notifySchedule: true, notifyScheduleLead: 10 })
+    await addSchedule(env, { weekday: 3, time: '08:00', title: '班会', place: '教室', remind: true })
+    await checkNotifications(env)
+    assertEqual(env.banners.length, 0, '07:49 还没进入提前 10 分钟窗口')
+    main.__test.setNow(new Date(2026, 9, 21, 7, 55, 0, 0).getTime())
+    await checkNotifications(env)
+    assertEqual(env.banners.length, 1, '进入窗口应发一条安排流光提醒')
+    assertEqual(env.notifications.length, 0, '准点类提醒不该再走系统通知中心')
+    assertEqual(env.banners[0].title, '安排即将开始')
+    assertEqual(env.banners[0].speak, true, '安排提醒应请求朗读')
+    assert(
+      env.banners[0].body.includes('08:00 班会') && env.banners[0].body.includes('教室'),
+      `安排提醒正文不完整：${env.banners[0].body}`,
+    )
+    await checkNotifications(env)
+    assertEqual(env.banners.length, 1, '同一条安排同一天不应重复提醒')
+  })
+  await test('单条 remindLead 覆盖全局默认提前量', async () => {
+    const env = atTime(new Date(2026, 9, 21, 7, 45, 0, 0), { notifySchedule: true, notifyScheduleLead: 5 })
+    await addSchedule(env, { weekday: 3, time: '08:00', title: '升旗仪式', remind: true, remindLead: 20 })
+    await checkNotifications(env)
+    assertEqual(env.banners.length, 1, 'remindLead=20 时 07:45 就该提醒，不能被全局 5 分钟挡住')
+    assert(env.banners[0].body.includes('升旗仪式'), '正文缺少该安排')
+  })
+  await test('未勾选 / 全天 / 已过点 / 非当天周几都不提醒', async () => {
+    const env = atTime(new Date(2026, 9, 21, 7, 55, 0, 0), { notifySchedule: true, notifyScheduleLead: 10 })
+    await addSchedule(env, { weekday: 3, time: '08:00', title: '没开提醒的安排' })
+    await addSchedule(env, { weekday: 3, time: '', title: '全天安排', remind: true })
+    await addSchedule(env, { weekday: 3, time: '07:00', title: '已过点安排', remind: true })
+    await addSchedule(env, { weekday: 5, time: '08:00', title: '周五安排', remind: true })
+    await checkNotifications(env)
+    assertEqual(env.banners.length, 0, `四种情况都不该提醒：${JSON.stringify(env.banners)}`)
+  })
+  await test('多条到点安排合并为一条摘要，第 4 条下轮补发', async () => {
+    const env = atTime(new Date(2026, 9, 21, 7, 55, 0, 0), { notifySchedule: true, notifyScheduleLead: 10 })
+    const titles = ['到点安排 A', '到点安排 B', '到点安排 C', '到点安排 D']
+    const times = ['08:00', '08:01', '08:02', '08:03']
+    for (let index = 0; index < titles.length; index += 1) {
+      await addSchedule(env, { weekday: 3, time: times[index], title: titles[index], remind: true })
+    }
+    await checkNotifications(env)
+    assertEqual(env.banners.length, 1, '同一轮到点的安排应合并成一条摘要')
+    const first = env.banners[0]
+    assertEqual(first.title, '安排即将开始')
+    for (const title of titles.slice(0, 3)) {
+      assert(first.body.includes(title), `首条摘要应包含「${title}」：${first.body}`)
+    }
+    assert(!first.body.includes(titles[3]), `摘要最多 3 条，不应包含第 4 条：${first.body}`)
+    await checkNotifications(env)
+    assertEqual(env.banners.length, 2, '第 4 条应在下一轮检查补发')
+    assert(env.banners[1].body.includes(titles[3]), '补发摘要应包含第 4 条')
+  })
+  await test('安排提醒不产生额外推送', async () => {
+    const env = atTime(new Date(2026, 9, 21, 7, 55, 0, 0), { notifySchedule: true, notifyScheduleLead: 10 })
+    await addSchedule(env, { weekday: 3, time: '08:00', title: '推送检查安排', remind: true })
+    const before = pushCount(env)
+    await checkNotifications(env)
+    assertEqual(env.banners.length, 1, '预置安排应触发一次提醒')
+    assertEqual(pushCount(env), before, '通知检查不应产生任何推送')
+  })
+  await test('旧宿主没有 ctx.banner：准点提醒回落系统通知中心', async () => {
+    const env = atTime(new Date(2026, 9, 21, 7, 55, 0, 0), { notifySchedule: true, notifyScheduleLead: 10 })
+    delete env.ctx.banner
+    await addSchedule(env, { weekday: 3, time: '08:00', title: '回落检查安排', remind: true })
+    await checkNotifications(env)
+    assertEqual(env.banners.length, 0, '旧宿主不该被调用 banner')
+    assertEqual(env.notifications.length, 1, '回落时应发一条系统通知')
+    assertEqual(env.notifications[0].title, '安排即将开始')
+    assert(env.logs.some((entry) => entry.message === '宿主不支持流光提醒，已回落系统通知'), '回落未记 info 日志')
+  })
+  await test('ctx.banner 返回 false：不抛错、记 warn 且不重试', async () => {
+    main.__test.setNow(new Date(2026, 9, 21, 7, 55, 0, 0).getTime())
+    const env = createContext({
+      bannerResult: false,
+      config: { notifySchedule: true, notifyScheduleLead: 10 },
+    })
+    await addSchedule(env, { weekday: 3, time: '08:00', title: '未显示安排', remind: true })
+    await checkNotifications(env)
+    assertEqual(env.banners.length, 1, '未显示也只尝试一次，不重试')
+    assert(env.logs.some((entry) => entry.level === 'warn' && entry.message === '流光提醒未显示'), '未记录 warn 日志')
+    await checkNotifications(env)
+    assertEqual(env.banners.length, 1, '已记录去重，不应再次尝试')
+  })
+  await test('安排提醒跨重启不重发（notify.v1.sched）', async () => {
+    main.__test.setNow(new Date(2026, 9, 21, 7, 55, 0, 0).getTime())
+    const first = createContext({ config: { notifySchedule: true, notifyScheduleLead: 10 } })
+    await addSchedule(first, { weekday: 3, time: '08:00', title: '重启检查安排', remind: true })
+    await checkNotifications(first)
+    assertEqual(first.banners.length, 1, '首次检查应提醒一次')
+    const saved = first.store.get('notify.v1')
+    assert(saved !== undefined && saved.sched !== null && typeof saved.sched === 'object', '未写入 sched 去重表')
+    assertEqual(Object.keys(saved.sched).length, 1, 'sched 应只记录这一条安排')
+    const snapshot = new Map(first.store)
+    const second = createContext({ config: { notifySchedule: true, notifyScheduleLead: 10 } })
+    for (const [key, value] of snapshot) await second.ctx.storage.set(key, value)
+    await checkNotifications(second)
+    assertEqual(second.banners.length, 0, '重启后同一条安排不应重复提醒')
   })
   await test('activate 时立即补发一次，且不重复', async () => {
     main.__test.setNow(new Date(2026, 9, 21, 7, 31, 0, 0).getTime())
@@ -1890,6 +2168,39 @@ async function mainTest() {
       assertEqual(changed.time, '14:30')
       assertEqual(changed.place, '报告厅2')
     })
+    await test('board 安排的提醒设置可保存、可改回默认、可关闭', async () => {
+      const added = await invokeBoard(env, 'add-schedule', {
+        weekOffset: 0,
+        weekday: 3,
+        time: '08:00',
+        title: '提醒检查',
+        remind: true,
+        remindLead: 15,
+      })
+      const data = expectBoardOk(added, 'board add-schedule 提醒')
+      const entry = boardScheduleByTitle(data, '提醒检查')
+      assert(entry !== null, '返回数据缺少这条安排')
+      assertEqual(entry.remind, true, 'add-schedule 未保存 remind')
+      assertEqual(entry.remindLead, 15, 'add-schedule 未保存 remindLead')
+
+      const toDefault = await invokeBoard(env, 'update-schedule', { weekOffset: 0, id: entry.id, remindLead: '' })
+      const backToDefault = expectBoardOk(toDefault, 'board update-schedule 提前量改默认')
+      const clearedLead = backToDefault.schedule.find((item) => item.id === entry.id)
+      assertEqual(clearedLead.remind, true, '只清提前量不应关掉提醒')
+      assertEqual(hasOwn(clearedLead, 'remindLead'), false, 'remindLead 未被清除，无法回落全局默认')
+
+      const off = await invokeBoard(env, 'update-schedule', { weekOffset: 0, id: entry.id, remind: false })
+      const offData = expectBoardOk(off, 'board update-schedule 关闭提醒')
+      assertEqual(offData.schedule.find((item) => item.id === entry.id).remind, false)
+    })
+    await test('add_schedule 工具的提醒设置进总览文本', async () => {
+      await addSchedule(env, { weekday: 3, time: '14:00', title: '家长开放日', remind: true, remindLead: 30 })
+      const overview = await invokeTool(env, 'get_overview', {})
+      assert(overview.content.includes('家长开放日'), '总览缺少这条安排')
+      assert(overview.content.includes('提前 30 分钟提醒'), `总览未标出提前量：${overview.content}`)
+      const added = await invokeTool(env, 'add_schedule', { weekday: 3, time: '15:00', title: '无提醒安排' })
+      assert(!added.content.includes('到点提醒'), '未开提醒的安排不应声称会提醒')
+    })
     await test('board delete-schedule 按 id / 按 weekday + title 删除', async () => {
       let data = await loadBoard(env, {})
       const entry = boardScheduleByTitle(data, '安排B')
@@ -2059,7 +2370,7 @@ async function mainTest() {
 
   header('班级事务台 · 过去周只读')
   await withEnv({}, async (env) => {
-    await test('过去周只读：12 个写动作全部返回 error', async () => {
+    await test('过去周只读：15 个写动作全部返回 error', async () => {
       const cases = [
         ['add-task', { text: '过去周事务' }],
         ['update-task', { id: 't-not-exist', text: 'x' }],
@@ -2068,13 +2379,16 @@ async function mainTest() {
         ['add-schedule', { weekday: 2, title: '过去周安排' }],
         ['update-schedule', { id: 's-not-exist', title: 'x' }],
         ['delete-schedule', { id: 's-not-exist' }],
+        ['add-routine', { title: '过去周例行' }],
+        ['update-routine', { id: 'r-not-exist', title: 'x' }],
+        ['delete-routine', { id: 'r-not-exist' }],
         ['set-duty-week', { groupId: 'g1' }],
         ['save-duty-groups', { groups: [{ name: '第1组', members: [] }] }],
         ['save-announcement', { text: '过去周通知' }],
         ['clear-scope', { scope: 'all' }],
         ['load-demo', {}],
       ]
-      assertEqual(cases.length, 12, '写动作清单应覆盖 12 个方法')
+      assertEqual(cases.length, 15, '写动作清单应覆盖 15 个方法')
       for (const [method, params] of cases) {
         const result = await invokeBoard(env, method, { weekOffset: -1, ...params })
         expectBoardError(result, `过去周 ${method}`)

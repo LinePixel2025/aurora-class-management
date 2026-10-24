@@ -1,5 +1,5 @@
 /**
- * Aurora 插件契约（手写副本，字段与 Aurora v0.5.2 `packages/shared/src/plugin/protocol.ts` 对齐）。
+ * Aurora 插件契约（手写副本，与 plugin-dev-kit 的契约文档对齐；`ctx.banner` 为 Aurora v0.5.6+）。
  *
  * 插件项目不依赖 Aurora 源码时用它获得编辑器补全；宿主升级 `apiVersion` 后以官方文档为准。
  */
@@ -46,6 +46,8 @@ export interface PluginContext {
   storage: PluginStorage
   net: PluginNet
   notify(input: { title: string; body: string }): Promise<boolean>
+  /** 流光提醒（屏幕顶端流光 + 置顶卡片，v0.5.6+）：需 `notifications` 权限 */
+  banner(input: { title: string; body: string; speak?: boolean; sound?: boolean }): Promise<boolean>
   log(level: 'debug' | 'info' | 'warn' | 'error', message: string, detail?: unknown): void
   emitEvent(name: string, payload?: unknown): Promise<void>
   ui: PluginUi

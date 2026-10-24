@@ -1,10 +1,10 @@
 {
   "id": "com.classmanagement.board",
   "name": "班级事务台",
-  "version": "2.1.2",
+  "version": "2.2.0",
   "apiVersion": 1,
   "minAuroraVersion": "0.5.3",
-  "description": "2 张页面型桌面小组件（桌面层、无毛玻璃）显示班级速览与今日事务；2 个页面型面板（班级事务台 + 班级周历，同一套黑板视觉）与 3 条斜杠命令；12 个 Agent 工具；可选系统通知。",
+  "description": "2 张页面型桌面小组件（桌面层、无毛玻璃）显示班级速览与今日事务；2 个页面型面板（班级事务台 + 班级周历，同一套黑板视觉）与 3 条斜杠命令；13 个 Agent 工具；可选系统通知（每日简报 / 事务截止 / 周一值日 / 安排到点前提醒）。",
   "author": {
     "name": "LinePixel2025"
   },
@@ -345,11 +345,75 @@
             "note": {
               "type": "string",
               "description": "备注（可选）"
+            },
+            "remind": {
+              "type": "boolean",
+              "description": "是否在到点前提醒（可选，默认不提醒；需在插件设置里开启「安排提醒」）"
+            },
+            "remindLead": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 120,
+              "description": "提前多少分钟提醒（可选，0–120；省略则用设置里的默认提前量）"
             }
           },
           "required": [
             "weekday",
             "title"
+          ]
+        },
+        "sensitivity": "confirm",
+        "readonly": false,
+        "timeoutMs": 30000
+      },
+      {
+        "name": "set_routines",
+        "description": "整表设置基础安排（每天/每周固定要做的例行事项，如早读、眼保健操）。基础安排属于全班长期数据，设一次后每周按 weekdays 自动复现；routines 传空数组即清空。",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "routines": {
+              "type": "array",
+              "maxItems": 30,
+              "description": "基础安排列表，整表替换",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "time": {
+                    "type": "string",
+                    "description": "时间 HH:mm（可选，留空表示全天例行）"
+                  },
+                  "title": {
+                    "type": "string",
+                    "description": "例行事项，例如：早读"
+                  },
+                  "place": {
+                    "type": "string",
+                    "description": "地点（可选）"
+                  },
+                  "note": {
+                    "type": "string",
+                    "description": "备注（可选）"
+                  },
+                  "weekdays": {
+                    "type": "array",
+                    "maxItems": 7,
+                    "description": "适用星期 1–7 的数组，默认 [1,2,3,4,5]（周一到周五）",
+                    "items": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 7
+                    }
+                  }
+                },
+                "required": [
+                  "title"
+                ]
+              }
+            }
+          },
+          "required": [
+            "routines"
           ]
         },
         "sensitivity": "confirm",
@@ -490,6 +554,14 @@
                       },
                       "note": {
                         "type": "string"
+                      },
+                      "remind": {
+                        "type": "boolean"
+                      },
+                      "remindLead": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 120
                       }
                     },
                     "required": [
@@ -654,7 +726,7 @@
         "key": "notifyDue",
         "label": "截止提醒",
         "type": "boolean",
-        "description": "今天的事务在截止前提醒",
+        "description": "今天的事务在截止前提醒（Aurora 0.5.6+ 用屏幕顶端流光提醒并朗读，旧宿主回落系统通知）",
         "default": false
       },
       {
@@ -673,6 +745,23 @@
         "type": "boolean",
         "description": "每周一在提醒时间发送本周值日组",
         "default": false
+      },
+      {
+        "key": "notifySchedule",
+        "label": "安排提醒",
+        "type": "boolean",
+        "description": "勾选了「到点前提醒」的本周安排，在开始前提前通知（Aurora 0.5.6+ 用屏幕顶端流光提醒并朗读，旧宿主回落系统通知；只在 Aurora 运行时生效）",
+        "default": false
+      },
+      {
+        "key": "notifyScheduleLead",
+        "label": "安排默认提前分钟",
+        "type": "number",
+        "description": "安排没有单独设置提前量时，提前多少分钟提醒",
+        "default": 10,
+        "min": 0,
+        "max": 120,
+        "step": 5
       }
     ]
   }

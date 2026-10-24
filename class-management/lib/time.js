@@ -120,6 +120,36 @@ function weekdayShort(weekday) {
   return WEEKDAY_SHORT[index >= 1 && index <= 7 ? index - 1 : 0]
 }
 
+/** 星期集合 → 人类可读：连续段用 `~`（`周一~周五`），离散用 `、`。 */
+function weekdaysLabel(weekdays) {
+  const days = []
+  for (const item of Array.isArray(weekdays) ? weekdays : []) {
+    const index = Number(item)
+    if (Number.isInteger(index) && index >= 1 && index <= 7 && !days.includes(index)) days.push(index)
+  }
+  if (days.length === 0) return ''
+  days.sort((left, right) => left - right)
+  if (days.length === 7) return '每天'
+  const runs = []
+  let start = days[0]
+  let prev = days[0]
+  for (const day of days.slice(1)) {
+    if (day === prev + 1) {
+      prev = day
+      continue
+    }
+    runs.push([start, prev])
+    start = day
+    prev = day
+  }
+  runs.push([start, prev])
+  return runs
+    .map(([from, to]) =>
+      from === to ? weekdayLabel(from) : to - from === 1 ? `${weekdayLabel(from)}、${weekdayLabel(to)}` : `${weekdayLabel(from)}~${weekdayLabel(to)}`,
+    )
+    .join('、')
+}
+
 function normalizeOffset(offset, min = -12, max = 12) {
   const number = Number(offset)
   if (!Number.isFinite(number)) return 0
@@ -231,6 +261,7 @@ module.exports = {
   weekdayIndex,
   weekdayLabel,
   weekdayShort,
+  weekdaysLabel,
   normalizeOffset,
   weekNumberOf,
   weekLabel,

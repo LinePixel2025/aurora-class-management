@@ -6,6 +6,7 @@
  *
  * 事务按天（task.date），只显示今天；旧事务保留 HISTORY_DAYS 天供查询。
  * 值日按周轮换一组，不再有按天覆盖。
+ * 基础安排（`board.routines`）是全班长期数据，按 `weekdays` 铺到每周对应的日子，不随周快照重复保存。
  */
 
 const {
@@ -45,6 +46,9 @@ const {
   emptyWeek,
   boardStats,
   seedGroups,
+  normalizeLead,
+  normalizeWeekdays,
+  sanitizeRoutines,
   historyCutoff,
   purgeStoredTaskHistory,
 } = require('./state')
@@ -214,6 +218,9 @@ async function loadWeek(ctx, options) {
   const schedule = sortSchedule(week.schedule)
   const counts = taskCounts(tasks, weekCtx)
   const today = todayKey()
+  const parsedTaskDate = parseDateKey(taskDate)
+  const taskWeekday = weekdayIndex(parsedTaskDate === null ? new Date(nowMs()) : parsedTaskDate)
+  const routines = board.routines
   return {
     board,
     settings,
@@ -229,6 +236,8 @@ async function loadWeek(ctx, options) {
     pendingTasks,
     doneTasks,
     schedule,
+    routines,
+    todayRoutines: routines.filter((routine) => routine.weekdays.includes(taskWeekday)),
     announcement: week.announcement,
     counts,
     completion: completionPercent(counts),
@@ -253,6 +262,7 @@ async function loadWeekGrid(ctx, weekOffsetInput) {
   const duty = resolveDuty(board, weekCtx.key, weekCtx.weekNumber)
   const tasks = sortTasks(week.tasks)
   const schedule = sortSchedule(week.schedule)
+  const routines = board.routines
   const today = todayKey()
   const weekEditable = weekOffset >= 0
   const days = []
@@ -270,6 +280,7 @@ async function loadWeekGrid(ctx, weekOffsetInput) {
       canAddTask: weekEditable && date >= today,
       tasks: tasks.filter((task) => task.date === date).map((task) => taskSummary(task, weekCtx)),
       schedule: schedule.filter((entry) => entry.weekday === weekday),
+      routines: routines.filter((routine) => routine.weekdays.includes(weekday)),
     })
   }
   return {
@@ -281,6 +292,7 @@ async function loadWeekGrid(ctx, weekOffsetInput) {
     canEdit: weekEditable,
     duty,
     groups: board.duty.groups,
+    routines,
     announcement: week.announcement,
     stats: taskCounts(tasks, weekCtx),
     days,
@@ -399,13 +411,36 @@ function buildSchedule(input, existingIds) {
   const timeRaw = typeof input.time === 'string' ? input.time.trim() : ''
   const time = normalizeTime(timeRaw)
   if (timeRaw !== '' && time === '') throw new DataError('time 格式应为 HH:mm')
-  return {
+  const entry = {
     id: makeId('s', existingIds),
     weekday,
     time,
     title,
     place: clip(input.place, LIMITS.maxPlace),
     note: clip(input.note, LIMITS.maxNote),
+    createdAt: new Date(nowMs()).toISOString(),
+    remind: input.remind === true,
+  }
+  // remindLead 只在给了合法值时写入：键缺失表示沿用全局默认提前量。
+  const lead = normalizeLead(input.remindLead)
+  if (lead !== null) entry.remindLead = lead
+  return entry
+}
+
+/** 基础安排条目：不绑定周，按 `weekdays` 每周复现（空星期回落周一~周五）。 */
+function buildRoutine(input, existingIds) {
+  const title = clip(input.title, LIMITS.maxScheduleTitle)
+  if (title === '') throw new DataError('例行事项不能为空')
+  const timeRaw = typeof input.time === 'string' ? input.time.trim() : ''
+  const time = normalizeTime(timeRaw)
+  if (timeRaw !== '' && time === '') throw new DataError('time 格式应为 HH:mm')
+  return {
+    id: makeId('r', existingIds),
+    time,
+    title,
+    place: clip(input.place, LIMITS.maxPlace),
+    note: clip(input.note, LIMITS.maxNote),
+    weekdays: normalizeWeekdays(input.weekdays),
     createdAt: new Date(nowMs()).toISOString(),
   }
 }
@@ -721,6 +756,13 @@ async function updateSchedule(ctx, input) {
     }
     if (input.place !== undefined) entry.place = clip(input.place, LIMITS.maxPlace)
     if (input.note !== undefined) entry.note = clip(input.note, LIMITS.maxNote)
+    if (input.remind !== undefined) entry.remind = input.remind === true
+    if (input.remindLead !== undefined) {
+      // 留空/非法 = 交回全局默认提前量，所以这里删除键而不是写 0。
+      const lead = normalizeLead(input.remindLead)
+      if (lead === null) delete entry.remindLead
+      else entry.remindLead = lead
+    }
     touch(week)
     return { entry, weekCtx }
   })
@@ -756,6 +798,74 @@ async function deleteSchedule(ctx, input) {
     week.schedule.splice(week.schedule.indexOf(entry), 1)
     touch(week)
     return { entry, weekCtx }
+  })
+}
+
+// ───────────────────────── 基础安排（全班长期，按星期复现） ─────────────────────────
+
+async function addRoutine(ctx, input) {
+  return updateBoard(ctx, async (board) => {
+    if (board.routines.length >= LIMITS.maxRoutines) {
+      throw new DataError(`基础安排已达 ${LIMITS.maxRoutines} 条上限`)
+    }
+    const routine = buildRoutine(input, board.routines.map((item) => item.id))
+    board.routines.push(routine)
+    return { routine }
+  })
+}
+
+async function updateRoutine(ctx, input) {
+  const id = typeof input.id === 'string' ? input.id.trim() : ''
+  if (id === '') throw new DataError('请提供基础安排 id')
+  return updateBoard(ctx, async (board) => {
+    const routine = board.routines.find((item) => item.id === id)
+    if (routine === undefined) throw new DataError(`找不到基础安排 id：${id}`)
+    if (input.time !== undefined) {
+      const raw = typeof input.time === 'string' ? input.time.trim() : ''
+      const time = normalizeTime(raw)
+      if (raw !== '' && time === '') throw new DataError('time 格式应为 HH:mm')
+      routine.time = time
+    }
+    if (input.title !== undefined) {
+      const title = clip(input.title, LIMITS.maxScheduleTitle)
+      if (title === '') throw new DataError('例行事项不能为空')
+      routine.title = title
+    }
+    if (input.place !== undefined) routine.place = clip(input.place, LIMITS.maxPlace)
+    if (input.note !== undefined) routine.note = clip(input.note, LIMITS.maxNote)
+    if (input.weekdays !== undefined) routine.weekdays = normalizeWeekdays(input.weekdays)
+    return { routine }
+  })
+}
+
+async function deleteRoutine(ctx, input) {
+  return updateBoard(ctx, async (board) => {
+    const id = typeof input.id === 'string' ? input.id.trim() : ''
+    if (id !== '') {
+      const index = board.routines.findIndex((item) => item.id === id)
+      if (index < 0) throw new DataError(`找不到基础安排 id：${id}`)
+      return { routine: board.routines.splice(index, 1)[0] }
+    }
+    const query = clip(input.title, LIMITS.maxScheduleTitle).toLowerCase()
+    if (query === '') throw new DataError('请提供基础安排 id 或 title')
+    const matches = board.routines.filter((item) => item.title.toLowerCase().includes(query))
+    if (matches.length === 0) throw new DataError(`没有匹配「${query}」的基础安排`)
+    if (matches.length > 1) {
+      throw new DataError(`匹配到 ${matches.length} 条基础安排，请改用 id：${matches.map((item) => item.id).join('、')}`)
+    }
+    return { routine: board.routines.splice(board.routines.indexOf(matches[0]), 1)[0] }
+  })
+}
+
+/** 整表替换基础安排（给 Agent 与「一次写全周例行」用）；传空数组即清空。 */
+async function setRoutines(ctx, input) {
+  const raw = Array.isArray(input.routines) ? input.routines : []
+  if (raw.length > LIMITS.maxRoutines) {
+    throw new DataError(`基础安排最多 ${LIMITS.maxRoutines} 条`)
+  }
+  return updateBoard(ctx, async (board) => {
+    board.routines = sanitizeRoutines(raw)
+    return { routines: board.routines }
   })
 }
 
@@ -965,10 +1075,16 @@ async function loadDemo(ctx) {
       },
     ]
     week.schedule = [
-      { id: makeId('s', []), weekday: 1, time: '08:00', title: '升旗仪式', place: '操场', note: '', createdAt: new Date(nowMs()).toISOString() },
+      { id: makeId('s', []), weekday: 1, time: '08:00', title: '升旗仪式', place: '操场', note: '', remind: true, createdAt: new Date(nowMs()).toISOString() },
       { id: makeId('s', []), weekday: 3, time: '16:00', title: '班会', place: '教室', note: '', createdAt: new Date(nowMs()).toISOString() },
       { id: makeId('s', []), weekday: 5, time: '15:30', title: '大扫除', place: '教室', note: '带清洁工具', createdAt: new Date(nowMs()).toISOString() },
     ]
+    if (board.routines.length === 0) {
+      board.routines = [
+        { id: makeId('r', []), time: '07:40', title: '早读', place: '教室', note: '', weekdays: [1, 2, 3, 4, 5], createdAt: new Date(nowMs()).toISOString() },
+        { id: makeId('r', []), time: '10:00', title: '眼保健操', place: '教室', note: '', weekdays: [1, 2, 3, 4, 5], createdAt: new Date(nowMs()).toISOString() },
+      ]
+    }
     week.duty = { note: '本周五放学后大扫除' }
     week.announcement = '本周五下午大扫除，请各组带好清洁工具。'
     touch(week)
@@ -1014,6 +1130,10 @@ module.exports = {
   addSchedule,
   updateSchedule,
   deleteSchedule,
+  addRoutine,
+  updateRoutine,
+  deleteRoutine,
+  setRoutines,
   setAnnouncement,
   applyWeekPlan,
   clearScope,

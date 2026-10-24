@@ -3,10 +3,11 @@
 /**
  * 插件数据层。
  *
- * - `board.v1`：业务数据（值日分组/轮换、每周安排/通知、按天事务）
+ * - `board.v1`：业务数据（值日分组/轮换、基础安排、每周安排/通知、按天事务）
  * - `ui.v1`：界面状态（当前面板视图、周偏移），与业务数据分开保存
  *
  * 事务按天存放（`task.date`），界面只显示今天；旧事务保留 7 天供查询，之后自动清理。
+ * 基础安排（`board.routines`）是全班长期数据，按 `weekdays` 铺到每周对应的日子，不随周快照重复保存。
  * 所有写入都经过净化、容量守卫与串行队列；单个存储值上限 256 KB，这里自留 240 KB 余量。
  */
 
@@ -43,6 +44,7 @@ const LIMITS = {
   maxWeeks: 40,
   maxTasksPerWeek: 80,
   maxSchedulePerWeek: 60,
+  maxRoutines: 30,
   maxGroups: 8,
   maxMembers: 12,
   maxTaskText: 200,
@@ -84,6 +86,7 @@ function createBoard() {
     version: BOARD_VERSION,
     anchorMonday: currentWeekKey(),
     duty: { groups: seedGroups(), order: ['g1', 'g2', 'g3', 'g4'] },
+    routines: [],
     weeks: {},
   }
 }
@@ -115,12 +118,21 @@ function sanitizeTask(raw, fallbackDate) {
   return task
 }
 
+/** 提前分钟数：0–120 整数；非法或留空返回 null，由调用方决定回落口径。 */
+function normalizeLead(raw) {
+  if (typeof raw === 'string' && raw.trim() === '') return null
+  if (raw === null || raw === undefined) return null
+  const number = Number(raw)
+  if (!Number.isFinite(number)) return null
+  return Math.min(120, Math.max(0, Math.trunc(number)))
+}
+
 function sanitizeSchedule(raw) {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null
   const weekday = Number(raw.weekday)
   const title = clip(raw.title, LIMITS.maxScheduleTitle)
   if (!Number.isInteger(weekday) || weekday < 1 || weekday > 7 || title === '') return null
-  return {
+  const entry = {
     id: /^[A-Za-z0-9_-]{1,40}$/.test(String(raw.id)) ? String(raw.id) : makeId('s', []),
     weekday,
     time: normalizeTime(raw.time),
@@ -131,7 +143,60 @@ function sanitizeSchedule(raw) {
       typeof raw.createdAt === 'string' && raw.createdAt.length <= 40
         ? raw.createdAt
         : new Date().toISOString(),
+    remind: raw.remind === true,
   }
+  // 键存在 = 这条单独指定提前量；缺省 = 沿用全局默认，所以非法值不能落成 0 或 null。
+  const lead = normalizeLead(raw.remindLead)
+  if (lead !== null) entry.remindLead = lead
+  return entry
+}
+
+const DEFAULT_ROUTINE_WEEKDAYS = [1, 2, 3, 4, 5]
+
+/** 适用星期：1–7 去重升序；为空时回落周一~周五（上课日）。 */
+function normalizeWeekdays(raw) {
+  const days = []
+  for (const item of Array.isArray(raw) ? raw : []) {
+    const day = Number(item)
+    if (!Number.isInteger(day) || day < 1 || day > 7) continue
+    if (!days.includes(day)) days.push(day)
+  }
+  days.sort((left, right) => left - right)
+  return days.length > 0 ? days : DEFAULT_ROUTINE_WEEKDAYS.slice()
+}
+
+function sanitizeRoutine(raw) {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const title = clip(raw.title, LIMITS.maxScheduleTitle)
+  if (title === '') return null
+  const routine = {
+    id: typeof raw.id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(raw.id) ? raw.id : makeId('r', []),
+    time: normalizeTime(raw.time),
+    title,
+    place: clip(raw.place, LIMITS.maxPlace),
+    note: clip(raw.note, LIMITS.maxNote),
+    weekdays: normalizeWeekdays(raw.weekdays),
+    createdAt:
+      typeof raw.createdAt === 'string' && raw.createdAt.length <= 40
+        ? raw.createdAt
+        : new Date().toISOString(),
+  }
+  return routine
+}
+
+/** 基础安排整表净化：丢空条目、补默认星期、去重 id、封顶 maxRoutines。 */
+function sanitizeRoutines(raw) {
+  const routines = []
+  const usedIds = new Set()
+  for (const item of Array.isArray(raw) ? raw : []) {
+    const routine = sanitizeRoutine(item)
+    if (routine === null) continue
+    while (usedIds.has(routine.id)) routine.id = makeId('r', [...usedIds])
+    usedIds.add(routine.id)
+    routines.push(routine)
+    if (routines.length >= LIMITS.maxRoutines) break
+  }
+  return routines
 }
 
 function sanitizeDutyGroups(rawGroups) {
@@ -217,6 +282,7 @@ function sanitizeBoard(raw) {
     anchorMonday:
       parseDateKey(source.anchorMonday) === null ? currentWeekKey() : String(source.anchorMonday).trim(),
     duty: { groups: [], order: [] },
+    routines: [],
     weeks: {},
   }
   const dutyRaw = source.duty !== null && typeof source.duty === 'object' ? source.duty : {}
@@ -230,6 +296,7 @@ function sanitizeBoard(raw) {
   }
   if (order.length === 0) order.push(...board.duty.groups.map((group) => group.id))
   board.duty.order = order
+  board.routines = sanitizeRoutines(source.routines)
 
   const weeksRaw = source.weeks !== null && typeof source.weeks === 'object' ? source.weeks : {}
   for (const [key, value] of Object.entries(weeksRaw)) {
@@ -246,6 +313,7 @@ function readSettings(config) {
   const source = config !== null && typeof config === 'object' ? config : {}
   const termStartDate =
     parseDateKey(source.termStartDate) === null ? '' : String(source.termStartDate).trim()
+  const scheduleLead = normalizeLead(source.notifyScheduleLead)
   return {
     className: clip(source.className, LIMITS.maxClassName) || '我的班级',
     teacher: clip(source.teacher, LIMITS.maxTeacher),
@@ -258,6 +326,8 @@ function readSettings(config) {
       ? Math.min(120, Math.max(0, Math.trunc(Number(source.notifyDueLead))))
       : 10,
     notifyDuty: source.notifyDuty === true,
+    notifySchedule: source.notifySchedule === true,
+    notifyScheduleLead: scheduleLead === null ? 10 : scheduleLead,
   }
 }
 
@@ -453,6 +523,10 @@ module.exports = {
   sanitizeWeek,
   sanitizeTask,
   sanitizeSchedule,
+  sanitizeRoutine,
+  sanitizeRoutines,
+  normalizeLead,
+  normalizeWeekdays,
   sanitizeDutyGroups,
   readSettings,
   readBoard,

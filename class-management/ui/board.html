@@ -104,6 +104,11 @@
         </details>
       </section>
 
+      <section id="today-routine-card" class="board-card" aria-labelledby="today-routine-title" hidden>
+        <h2 class="cal-section-title board-card-title"><span id="today-routine-title">每天例行</span><span id="today-routine-count" class="board-section-count"></span></h2>
+        <div id="today-routine-list" class="board-routine-list"></div>
+      </section>
+
       <section class="board-card" aria-labelledby="preview-title">
         <h2 class="cal-section-title board-card-title"><span id="preview-title">本周安排</span><span id="preview-count" class="board-section-count"></span></h2>
         <div id="preview-schedule" class="board-preview-list"></div>
@@ -123,9 +128,10 @@
     <!-- ══════════════ 值日 ══════════════ -->
     <section id="view-duty" class="board-view" role="tabpanel" aria-labelledby="tab-duty" tabindex="-1" hidden>
       <section class="board-card" aria-labelledby="duty-title">
-        <h2 class="cal-section-title board-card-title"><span id="duty-title">本周值日</span></h2>
-        <div id="duty-info" class="board-kv"></div>
-        <p id="duty-members" class="board-members"></p>
+        <h2 class="cal-section-title board-card-title"><span id="duty-title">本周值日</span><span id="duty-week-tag" class="board-duty-week"></span></h2>
+        <div id="duty-hero" class="board-duty-hero"></div>
+        <div id="duty-people" class="board-duty-people"></div>
+        <p id="duty-note" class="board-duty-note" hidden></p>
         <div class="board-actions">
           <button id="edit-duty" class="cal-btn" type="button">修改本周值日</button>
         </div>
@@ -179,6 +185,12 @@
               <input id="add-schedule-note" type="text" maxlength="60" autocomplete="off" placeholder="可选" />
             </label>
           </div>
+          <div class="board-remind-row">
+            <label class="cal-check"><input id="add-schedule-remind" type="checkbox" /> 到点前提醒</label>
+            <label class="cal-field board-lead-field">提前分钟
+              <input id="add-schedule-remind-lead" type="number" min="0" max="120" step="5" placeholder="留空用默认" />
+            </label>
+          </div>
           <div class="board-form-foot">
             <div id="add-schedule-error" class="cal-error"></div>
             <button id="add-schedule-submit" class="cal-btn cal-btn-primary" type="submit">添加安排</button>
@@ -189,6 +201,15 @@
       <section class="board-card" aria-labelledby="schedule-title">
         <h2 class="cal-section-title board-card-title"><span id="schedule-title">本周安排</span><span id="schedule-count" class="board-section-count"></span></h2>
         <div id="schedule-list" class="board-schedule-list"></div>
+      </section>
+
+      <section id="routine-card" class="board-card" aria-labelledby="routine-title">
+        <h2 class="cal-section-title board-card-title"><span id="routine-title">基础安排（每天例行）</span><span id="routine-count" class="board-section-count"></span></h2>
+        <p class="board-hint">早读、眼保健操这类每天都做的事设一次就好，每周按选定的星期自动复现，不用每周重排。</p>
+        <div id="routine-list" class="board-routine-list"></div>
+        <div class="board-actions">
+          <button id="add-routine" class="cal-btn" type="button">添加基础安排</button>
+        </div>
       </section>
     </section>
 
@@ -228,6 +249,8 @@
           <li>/class 打开管理台；/week-plan 让 Agent 总结今日计划。</li>
           <li>事务按天：add_task 默认今天，传 date 可排未来某天；旧事务保留 7 天。</li>
           <li>值日按周：set_duty_week 指定本周组，set_duty_groups 编辑分组与轮换顺序。</li>
+          <li>每天例行：set_routines 整表写入基础安排，也可在「安排 → 基础安排」逐条增删改。</li>
+          <li>安排提醒：安排可勾选「到点前提醒」（remind / remindLead），需在插件设置里开启安排提醒。</li>
           <li>Agent 修改后页面与小组件会自动刷新，无需手动刷新。</li>
         </ul>
       </section>
@@ -310,10 +333,46 @@
     <label class="cal-field">备注
       <input id="schedule-editor-note" type="text" maxlength="60" autocomplete="off" />
     </label>
+    <div class="board-remind-row">
+      <label class="cal-check"><input id="schedule-editor-remind" type="checkbox" /> 到点前提醒</label>
+      <label class="cal-field board-lead-field">提前分钟
+        <input id="schedule-editor-remind-lead" type="number" min="0" max="120" step="5" placeholder="留空用默认" />
+      </label>
+    </div>
     <div id="schedule-editor-error" class="cal-error"></div>
     <div class="cal-modal-actions">
       <button id="schedule-editor-save" class="cal-btn cal-btn-primary" type="button">保存</button>
       <button id="schedule-editor-cancel" class="cal-btn" type="button">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ 基础安排编辑弹层 ══════════════ -->
+<div id="routine-editor" class="cal-modal" hidden>
+  <div class="cal-modal-card board-modal" role="dialog" aria-modal="true" aria-labelledby="routine-editor-title">
+    <h2 id="routine-editor-title" class="cal-modal-title">基础安排</h2>
+    <label class="cal-field">事项
+      <input id="routine-editor-title-input" type="text" maxlength="60" autocomplete="off" placeholder="例如：早读" />
+    </label>
+    <div class="board-form-grid">
+      <label class="cal-field">时间
+        <input id="routine-editor-time" type="time" />
+      </label>
+      <label class="cal-field">地点
+        <input id="routine-editor-place" type="text" maxlength="40" autocomplete="off" placeholder="例如：教室" />
+      </label>
+      <label class="cal-field board-field-wide">备注
+        <input id="routine-editor-note" type="text" maxlength="60" autocomplete="off" placeholder="可选" />
+      </label>
+    </div>
+    <div class="board-days-field">
+      <span class="board-days-label">每周哪天</span>
+      <div id="routine-editor-days" class="board-days"></div>
+    </div>
+    <div id="routine-editor-error" class="cal-error"></div>
+    <div class="cal-modal-actions">
+      <button id="routine-editor-save" class="cal-btn cal-btn-primary" type="button">保存</button>
+      <button id="routine-editor-cancel" class="cal-btn" type="button">取消</button>
     </div>
   </div>
 </div>

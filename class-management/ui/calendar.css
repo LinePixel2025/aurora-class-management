@@ -39,6 +39,9 @@
   --cal-duty: #8fc3d9;
   --cal-duty-soft: rgba(143, 195, 217, 0.12);
 
+  --cal-routine: #d9a7c4;
+  --cal-routine-soft: rgba(217, 167, 196, 0.12);
+
   --cal-danger: #e8837a;
   --cal-danger-ink: #1b1210;
   --cal-danger-soft: rgba(232, 131, 122, 0.13);
@@ -86,6 +89,9 @@
     --cal-duty: #2f6f86;
     --cal-duty-soft: rgba(47, 111, 134, 0.1);
 
+    --cal-routine: #8a4a6d;
+    --cal-routine-soft: rgba(138, 74, 109, 0.1);
+
     --cal-danger: #a63e34;
     --cal-danger-ink: #fff8f5;
     --cal-danger-soft: rgba(166, 62, 52, 0.09);
@@ -128,6 +134,9 @@ html[data-theme="light"] {
   --cal-duty: #2f6f86;
   --cal-duty-soft: rgba(47, 111, 134, 0.1);
 
+  --cal-routine: #8a4a6d;
+  --cal-routine-soft: rgba(138, 74, 109, 0.1);
+
   --cal-danger: #a63e34;
   --cal-danger-ink: #fff8f5;
   --cal-danger-soft: rgba(166, 62, 52, 0.09);
@@ -168,6 +177,9 @@ html[data-theme="dark"] {
 
   --cal-duty: #8fc3d9;
   --cal-duty-soft: rgba(143, 195, 217, 0.12);
+
+  --cal-routine: #d9a7c4;
+  --cal-routine-soft: rgba(217, 167, 196, 0.12);
 
   --cal-danger: #e8837a;
   --cal-danger-ink: #1b1210;
@@ -387,6 +399,28 @@ textarea:disabled {
   display: none;
 }
 
+/* 周历头部：值日拆层后不再需要胶囊底色与前导点，避免徽章套胶囊糊成一片。 */
+.cal-duty.is-bar {
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  padding: 3px 4px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.cal-duty.is-bar::before {
+  content: none;
+}
+
+.cal-duty.is-bar:hover:not(:disabled) {
+  border-color: transparent;
+}
+
+.cal-duty-inline-note {
+  color: var(--cal-muted);
+  overflow-wrap: anywhere;
+}
+
 .cal-stats {
   display: flex;
   flex-wrap: wrap;
@@ -404,6 +438,100 @@ textarea:disabled {
 
 .cal-duty:empty + .cal-stats {
   margin-left: 0;
+}
+
+/* ── 值日 / 基础安排共用原子 ──────────────────────────────
+   面板（board.css）与周历直接复用；桌面小组件（widget.css）用 em 覆写尺寸。
+   值日徽章用 --cal-duty 实色，与「按 --cal-duty-soft 上色的安排条」拉开层级。 */
+.cal-duty-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--cal-duty);
+  color: var(--cal-bg);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.cal-duty-badge.is-empty {
+  background: transparent;
+  border: 1px dashed var(--cal-line-strong);
+  color: var(--cal-faint);
+  font-weight: 600;
+}
+
+.cal-duty-flag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border: 1px solid var(--cal-line);
+  border-radius: 999px;
+  color: var(--cal-muted);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.cal-duty-flag.is-override {
+  border-color: var(--cal-accent-soft);
+  background: var(--cal-accent-soft);
+  color: var(--cal-accent);
+}
+
+.cal-duty-person {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--cal-duty-soft);
+  color: var(--cal-text-soft);
+  font-size: 11.5px;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.cal-routine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px 7px;
+  padding: 3px 8px;
+  border-left: 2px solid var(--cal-routine);
+  border-radius: 6px;
+  background: var(--cal-routine-soft);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+.cal-routine-time {
+  color: var(--cal-routine);
+  font-family: var(--cal-font-mono);
+  font-weight: 600;
+}
+
+.cal-routine-title {
+  color: var(--cal-text);
+  font-weight: 600;
+}
+
+.cal-routine-meta {
+  color: var(--cal-muted);
+}
+
+.cal-schedule-remind {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  border: 1px solid var(--cal-accent-soft);
+  border-radius: 999px;
+  background: var(--cal-accent-soft);
+  color: var(--cal-accent);
+  font-size: 11px;
+  line-height: 1.7;
+  white-space: nowrap;
 }
 
 /* ════════════════════════════════════════════
@@ -690,6 +818,20 @@ textarea:disabled {
 
 .cal-day-schedule:empty {
   display: none;
+}
+
+.cal-day-routines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 7px;
+}
+
+.cal-day-routines-label {
+  color: var(--cal-faint);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
 }
 
 .cal-schedule-row {

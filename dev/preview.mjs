@@ -312,6 +312,8 @@ const DEMO_SCHEDULE = [
     title: '班会',
     place: '教室',
     note: '主题：秋日运动会动员',
+    remind: true,
+    remindLead: 15,
     createdAt: '2026-10-16T08:05:00.000Z',
   },
   {
@@ -321,6 +323,7 @@ const DEMO_SCHEDULE = [
     title: '大扫除',
     place: '教室',
     note: '带清洁工具',
+    remind: true,
     createdAt: '2026-10-16T08:10:00.000Z',
   },
 ]
@@ -329,6 +332,20 @@ const DEMO_DUTY = {
   groupName: '第1组',
   members: ['张三', '李四', '王五'],
   note: '本周五放学后大扫除，请带好清洁工具。',
+}
+
+/** 基础安排：每天例行，board 级长期数据。 */
+const DEMO_ROUTINES = [
+  { id: 'r1', time: '07:40', title: '早读', place: '教室', note: '语文单周 / 数学双周', weekdays: [1, 2, 3, 4, 5], createdAt: '2026-09-01T08:00:00.000Z' },
+  { id: 'r2', time: '09:10', title: '课间操', place: '操场', note: '', weekdays: [1, 2, 3, 4, 5], createdAt: '2026-09-01T08:00:00.000Z' },
+  { id: 'r3', time: '10:00', title: '眼保健操', place: '教室', note: '', weekdays: [1, 2, 3, 4, 5], createdAt: '2026-09-01T08:00:00.000Z' },
+  { id: 'r4', time: '16:30', title: '教室通风与关灯', place: '', note: '最后离开的一组负责', weekdays: [1, 2, 3, 4, 5], createdAt: '2026-09-01T08:00:00.000Z' },
+]
+
+function routinesOn(weekday) {
+  return DEMO_ROUTINES.filter(function (routine) {
+    return routine.weekdays.includes(weekday)
+  })
 }
 
 const DEMO_ROTATION = [
@@ -421,6 +438,12 @@ function createBoardData(config) {
     completion: completionOf(counts),
     tasks,
     schedule,
+    routines: Array.isArray(cfg.routines) ? cfg.routines : clone(DEMO_ROUTINES),
+    todayRoutines: Array.isArray(cfg.routines)
+      ? cfg.routines.filter(function (routine) {
+          return routine.weekdays.includes(WEEK.todayWeekday)
+        })
+      : clone(routinesOn(WEEK.todayWeekday)),
     announcement: typeof cfg.announcement === 'string' ? cfg.announcement : WEEK.announcement,
     duty: {
       groupName: typeof duty.groupName === 'string' ? duty.groupName : '',
@@ -454,6 +477,7 @@ function createEmptyBoardData() {
   return createBoardData({
     tasks: [],
     schedule: [],
+    routines: [],
     groups: [],
     duty: { groupName: '', members: [], note: '' },
     announcement: '',
@@ -510,10 +534,13 @@ function createWidgetData(widgetId, config) {
     tasks,
     schedule,
     scheduleCount: schedule.length,
+    routines: Array.isArray(cfg.routines) ? cfg.routines : clone(routinesOn(WEEK.todayWeekday)),
     duty: {
       groupName: typeof duty.groupName === 'string' ? duty.groupName : '',
       members: Array.isArray(duty.members) ? duty.members : [],
       note: typeof duty.note === 'string' ? duty.note : '',
+      hasOverrideGroup: duty.hasOverrideGroup === true,
+      isCurrentWeek: cfg.isCurrentWeek !== false,
     },
     announcement: typeof cfg.announcement === 'string' ? cfg.announcement : WEEK.announcement,
     showCompleted: cfg.showCompleted === true,
@@ -863,6 +890,22 @@ function panelPreviews() {
       data: createBoardData({ view: 'schedule' }),
     },
     {
+      name: 'panel-schedule-edit-dark',
+      theme: 'dark',
+      label: '安排视图 · 安排编辑弹层（含到点前提醒）',
+      data: createBoardData({ view: 'schedule' }),
+      driver: clickFirstScript('#schedule-list .board-schedule-item .board-task-btn'),
+      height: MODAL_VIEWPORT_HEIGHT,
+    },
+    {
+      name: 'panel-routine-edit-dark',
+      theme: 'dark',
+      label: '安排视图 · 基础安排编辑弹层',
+      data: createBoardData({ view: 'schedule' }),
+      driver: clickFirstScript('#routine-list .board-task-btn'),
+      height: MODAL_VIEWPORT_HEIGHT,
+    },
+    {
       name: 'panel-settings-dark',
       theme: 'dark',
       label: '设置视图',
@@ -906,6 +949,7 @@ function widgetDataFor(variant, widgetId) {
     return createWidgetData(widgetId, {
       tasks: [],
       schedule: [],
+      routines: [],
       duty: { groupName: '', members: [], note: '' },
       announcement: '',
       showCompleted: false,

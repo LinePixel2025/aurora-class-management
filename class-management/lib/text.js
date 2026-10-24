@@ -3,7 +3,7 @@
 /** 给 Agent 的纯文本输出：信息密度高、带 id、可直接照着调用工具。 */
 
 const { clip } = require('./util')
-const { weekdayLabel } = require('./time')
+const { weekdayLabel, weekdaysLabel } = require('./time')
 
 function weekOffsetLabel(offset) {
   if (offset === 0) return '本周'
@@ -42,11 +42,28 @@ function dutyReport(data) {
 
 function scheduleReport(data) {
   if (data.schedule.length === 0) return ['（本周没有安排）']
+  const defaultLead = data.settings.notifyScheduleLead
   return data.schedule.map((entry) => {
     const time = entry.time === '' ? '' : ` ${entry.time}`
     const place = entry.place !== '' ? ` @ ${entry.place}` : ''
     const note = entry.note !== '' ? `（${entry.note}）` : ''
-    return `- id=${entry.id} ${weekdayLabel(entry.weekday)}${time} ${entry.title}${place}${note}`
+    const remind =
+      entry.remind === true
+        ? `｜提前 ${Number.isFinite(Number(entry.remindLead)) ? Math.trunc(Number(entry.remindLead)) : defaultLead} 分钟提醒`
+        : ''
+    return `- id=${entry.id} ${weekdayLabel(entry.weekday)}${time} ${entry.title}${place}${note}${remind}`
+  })
+}
+
+/** 基础安排：全班长期数据，按星期复现，整表改。 */
+function routineReport(data) {
+  const routines = Array.isArray(data.routines) ? data.routines : []
+  if (routines.length === 0) return ['（还没有基础安排）']
+  return routines.map((routine) => {
+    const time = routine.time === '' ? '' : ` ${routine.time}`
+    const place = routine.place !== '' ? ` @ ${routine.place}` : ''
+    const note = routine.note !== '' ? `（${routine.note}）` : ''
+    return `- id=${routine.id} ${weekdaysLabel(routine.weekdays)}${time} ${routine.title}${place}${note}`
   })
 }
 
@@ -76,6 +93,9 @@ function overViewText(data, options) {
   lines.push('')
   lines.push('本周安排：')
   lines.push(...scheduleReport(data))
+  lines.push('')
+  lines.push('基础安排（按星期每周复现，改一组用 set_routines 整表写入）：')
+  lines.push(...routineReport(data))
   lines.push('')
   lines.push(`班级通知：${data.announcement === '' ? '（无）' : data.announcement}`)
   return clipContent(lines.join('\n'))
@@ -118,6 +138,7 @@ module.exports = {
   taskLine,
   dutyReport,
   scheduleReport,
+  routineReport,
   overViewText,
   taskListText,
   planSummaryText,

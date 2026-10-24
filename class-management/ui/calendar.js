@@ -483,7 +483,7 @@
     }
 
     if (elements.dutySummary !== null && elements.dutySummary !== undefined) {
-      elements.dutySummary.textContent = dutySummaryText(data)
+      renderDutySummary(elements.dutySummary, data)
       elements.dutySummary.disabled = !canEdit
     }
 
@@ -532,6 +532,50 @@
 
     const prefix = data !== null && typeof data === 'object' && data.isCurrentWeek === true ? '本周值日：' : '该周值日：'
     return prefix + parts.join(' · ')
+  }
+
+  function spanNode(className, text) {
+    const node = document.createElement('span')
+    node.className = className
+    node.textContent = text
+    return node
+  }
+
+  function memberListOf(rawMembers) {
+    return (Array.isArray(rawMembers) ? rawMembers : [])
+      .map(function (member) {
+        return trimmedOf(member)
+      })
+      .filter(function (member) {
+        return member !== ''
+      })
+  }
+
+  /** 值日拆成「组名徽章 / 轮换方式 / 成员 / 备注」四层，长名单换行而不是挤成一行。 */
+  function renderDutySummary(button, data) {
+    const dutyRaw = data !== null && typeof data === 'object' ? data.duty : null
+    const duty = dutyRaw !== null && typeof dutyRaw === 'object' ? dutyRaw : {}
+    const groupName = trimmedOf(duty.groupName)
+    const members = memberListOf(duty.members)
+    const note = trimmedOf(duty.note)
+
+    clearChildren(button)
+    button.classList.add('is-bar')
+    const badge = spanNode('cal-duty-badge', groupName === '' ? '待安排' : groupName)
+    if (groupName === '') badge.classList.add('is-empty')
+    button.appendChild(badge)
+
+    const override = duty.hasOverrideGroup === true
+    const flag = spanNode('cal-duty-flag', override === true ? '本周指定' : '按周自动轮换')
+    if (override === true) flag.classList.add('is-override')
+    button.appendChild(flag)
+
+    for (const member of members) button.appendChild(spanNode('cal-duty-person', member))
+    if (note !== '') button.appendChild(spanNode('cal-duty-inline-note', note))
+
+    const label = dutySummaryText(data)
+    button.setAttribute('title', label)
+    button.setAttribute('aria-label', label)
   }
 
   function renderDays(data) {
@@ -616,8 +660,36 @@
     }
     section.appendChild(scheduleList)
 
+    const routines = Array.isArray(day.routines) ? day.routines : []
+    if (routines.length > 0) {
+      const routineList = document.createElement('div')
+      routineList.className = 'cal-day-routines'
+      const caption = document.createElement('span')
+      caption.className = 'cal-day-routines-label'
+      caption.textContent = '每天例行'
+      routineList.appendChild(caption)
+      for (const routine of routines) {
+        if (routine === null || typeof routine !== 'object') continue
+        routineList.appendChild(buildRoutineRow(routine))
+      }
+      section.appendChild(routineList)
+    }
+
     section.appendChild(buildAddForm(day, canAddTask))
     return section
+  }
+
+  function buildRoutineRow(routine) {
+    const row = document.createElement('div')
+    row.className = 'cal-routine'
+    const time = trimmedOf(routine.time)
+    if (time !== '') row.appendChild(spanNode('cal-routine-time', time))
+    row.appendChild(spanNode('cal-routine-title', textOf(routine.title)))
+    const place = trimmedOf(routine.place)
+    if (place !== '') row.appendChild(spanNode('cal-routine-meta', '@ ' + place))
+    const note = trimmedOf(routine.note)
+    if (note !== '') row.appendChild(spanNode('cal-routine-meta', note))
+    return row
   }
 
   function buildTaskRow(task, canEditDay) {
@@ -710,6 +782,13 @@
       place.className = 'cal-schedule-place'
       place.textContent = textOf(entry.place)
       row.appendChild(place)
+    }
+
+    if (entry.remind === true) {
+      const lead = Number(entry.remindLead)
+      row.appendChild(
+        spanNode('cal-schedule-remind', Number.isFinite(lead) ? '提前 ' + Math.trunc(lead) + ' 分钟' : '到点前提醒'),
+      )
     }
 
     row.addEventListener('click', function () {

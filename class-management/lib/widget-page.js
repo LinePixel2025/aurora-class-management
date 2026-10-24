@@ -42,10 +42,13 @@ function shapeWidgetData(data, widgetId) {
     tasks: data.tasks.map((task) => ops.taskSummary(task, data.weekCtx)),
     schedule: data.schedule,
     scheduleCount: data.schedule.length,
+    routines: data.todayRoutines,
     duty: {
       groupName: data.duty.groupName,
       members: data.duty.members,
       note: data.duty.note,
+      hasOverrideGroup: data.duty.hasOverrideGroup,
+      isCurrentWeek: weekCtx.isCurrent === true,
     },
     announcement: data.announcement,
     showCompleted: data.settings.showCompleted,

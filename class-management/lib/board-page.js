@@ -28,6 +28,9 @@ const WRITE_METHODS = new Set([
   'add-schedule',
   'update-schedule',
   'delete-schedule',
+  'add-routine',
+  'update-routine',
+  'delete-routine',
   'set-duty-week',
   'save-duty-groups',
   'save-announcement',
@@ -96,6 +99,8 @@ function shapeBoardData(data, view) {
     completion: data.completion,
     tasks: data.tasks.map((task) => ops.taskSummary(task, weekCtx)),
     schedule: data.schedule,
+    routines: data.routines,
+    todayRoutines: data.todayRoutines,
     announcement: data.announcement,
     duty: {
       groupName: duty.groupName,
@@ -180,6 +185,8 @@ async function applyBoardAction(name, p, ctx, offsetNow) {
       title: p.title,
       place: p.place,
       note: p.note,
+      remind: p.remind,
+      remindLead: p.remindLead,
       weekOffset: offsetNow,
     })
     return '已添加安排'
@@ -188,7 +195,7 @@ async function applyBoardAction(name, p, ctx, offsetNow) {
     const id = typeof p.id === 'string' ? p.id.trim() : ''
     if (id === '') throw new DataError('缺少安排 id')
     const patch = { id, weekOffset: offsetNow }
-    for (const key of ['weekday', 'time', 'title', 'place', 'note']) {
+    for (const key of ['weekday', 'time', 'title', 'place', 'note', 'remind', 'remindLead']) {
       if (p[key] !== undefined) patch[key] = p[key]
     }
     if (Object.keys(patch).length <= 2) throw new DataError('没有要修改的内容')
@@ -207,6 +214,37 @@ async function applyBoardAction(name, p, ctx, offsetNow) {
     }
     await ops.deleteSchedule(ctx, { id, weekOffset: offsetNow })
     return '已删除安排'
+  }
+  if (name === 'add-routine') {
+    await ops.addRoutine(ctx, {
+      time: p.time,
+      title: p.title,
+      place: p.place,
+      note: p.note,
+      weekdays: p.weekdays,
+    })
+    return '已添加基础安排'
+  }
+  if (name === 'update-routine') {
+    const id = typeof p.id === 'string' ? p.id.trim() : ''
+    if (id === '') throw new DataError('缺少基础安排 id')
+    const patch = { id }
+    for (const key of ['time', 'title', 'place', 'note', 'weekdays']) {
+      if (p[key] !== undefined) patch[key] = p[key]
+    }
+    if (Object.keys(patch).length <= 1) throw new DataError('没有要修改的内容')
+    await ops.updateRoutine(ctx, patch)
+    return '基础安排已更新'
+  }
+  if (name === 'delete-routine') {
+    const id = typeof p.id === 'string' ? p.id.trim() : ''
+    if (id === '') {
+      if (typeof p.title !== 'string' || p.title.trim() === '') throw new DataError('缺少基础安排 id')
+      await ops.deleteRoutine(ctx, { title: p.title })
+      return '已删除基础安排'
+    }
+    await ops.deleteRoutine(ctx, { id })
+    return '已删除基础安排'
   }
   if (name === 'set-duty-week') {
     const patch = { weekOffset: offsetNow }

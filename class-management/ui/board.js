@@ -26,6 +26,7 @@
   const PREVIEW_SCHEDULE_LIMIT = 5
 
   const WEEKDAY_NAMES = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+  const DEFAULT_ROUTINE_WEEKDAYS = [1, 2, 3, 4, 5]
   const PRIORITY_VALUES = ['high', 'normal', 'low']
   const PRIORITY_LABELS = { high: '高优先级', normal: '', low: '低优先级' }
   const CATEGORY_VALUES = ['作业', '活动', '通知', '事务', '其他']
@@ -53,6 +54,7 @@
     focusReturn: null,
     taskEditorId: '',
     scheduleEditorId: '',
+    routineEditorId: '',
     confirm: null,
     confirmReturn: null,
     confirmBusy: false,
@@ -166,6 +168,18 @@
     for (const node of asArray(nodes)) {
       if (node !== null && node !== undefined) node.disabled = disabled === true
     }
+  }
+
+  function isChecked(node) {
+    return node !== null && node !== undefined && node.checked === true
+  }
+
+  function inputValue(node) {
+    return node === null || node === undefined ? '' : textOf(node.value).trim()
+  }
+
+  function setChecked(node, checked) {
+    if (node !== null && node !== undefined) node.checked = checked === true
   }
 
   function showStatus(message, kind) {
@@ -584,7 +598,10 @@
       panel.hidden = name !== view
     }
     if (view === 'duty') renderDuty(data)
-    else if (view === 'schedule') renderSchedule(data)
+    else if (view === 'schedule') {
+      renderSchedule(data)
+      renderRoutines(data)
+    }
     else if (view === 'settings') renderSettings(data)
     else renderBoard(data)
   }
@@ -702,28 +719,111 @@
       }
     }
 
+    renderTodayRoutines(data)
     renderSchedulePreview(data)
     renderAnnouncement(data, canEdit)
   }
 
-  function renderDutyPill(data, canEdit) {
-    if (elements.dutyPill === null || elements.dutyPill === undefined) return
-    const duty = objectOf(data.duty)
-    const parts = []
-    const groupName = trimmedOf(duty.groupName)
-    parts.push(groupName === '' ? '待安排' : groupName)
-    const members = asArray(duty.members)
+  function remindLabelFor(entry) {
+    const lead = Number(entry.remindLead)
+    return Number.isFinite(lead) ? '提前 ' + Math.trunc(lead) + ' 分钟' : '到点前提醒'
+  }
+
+  function isValidLead(value) {
+    const number = Number(value)
+    return Number.isFinite(number) && number >= 0 && number <= 120
+  }
+
+  function buildSpan(className, text) {
+    const node = document.createElement('span')
+    node.className = className
+    node.textContent = text
+    return node
+  }
+
+  function memberListOf(rawMembers) {
+    return asArray(rawMembers)
       .map(function (member) {
         return trimmedOf(member)
       })
       .filter(function (member) {
         return member !== ''
       })
+  }
+
+  function buildDutyBadge(groupName) {
+    const badge = buildSpan('cal-duty-badge', groupName === '' ? '待安排' : groupName)
+    if (groupName === '') badge.classList.add('is-empty')
+    return badge
+  }
+
+  function buildDutyFlag(isOverride) {
+    const flag = buildSpan('cal-duty-flag', isOverride === true ? '本周指定' : '按周自动轮换')
+    if (isOverride === true) flag.classList.add('is-override')
+    return flag
+  }
+
+  /** 连续星期用 `~`，离散用 `、`（与 lib/time.js 的 weekdaysLabel 同口径）。 */
+  function weekdaysLabel(weekdays) {
+    const days = []
+    for (const item of asArray(weekdays)) {
+      const day = Number(item)
+      if (Number.isInteger(day) && day >= 1 && day <= 7 && !days.includes(day)) days.push(day)
+    }
+    if (days.length === 0) return '不重复'
+    days.sort(function (left, right) {
+      return left - right
+    })
+    if (days.length === 7) return '每天'
+    const runs = []
+    let start = days[0]
+    let last = days[0]
+    for (const day of days.slice(1)) {
+      if (day === last + 1) {
+        last = day
+        continue
+      }
+      runs.push([start, last])
+      start = day
+      last = day
+    }
+    runs.push([start, last])
+    return runs
+      .map(function (run) {
+        if (run[0] === run[1]) return WEEKDAY_NAMES[run[0] - 1]
+        if (run[1] - run[0] === 1) return WEEKDAY_NAMES[run[0] - 1] + '、' + WEEKDAY_NAMES[run[1] - 1]
+        return WEEKDAY_NAMES[run[0] - 1] + '~' + WEEKDAY_NAMES[run[1] - 1]
+      })
+      .join('、')
+  }
+
+  function dutyAriaLabel(data, duty, members) {
+    const parts = [trimmedOf(duty.groupName) === '' ? '待安排' : trimmedOf(duty.groupName)]
     if (members.length > 0) parts.push(members.join('、'))
     const note = trimmedOf(duty.note)
     if (note !== '') parts.push(note)
-    const prefix = data.isCurrentWeek === true ? '本周值日：' : '该周值日：'
-    elements.dutyPill.textContent = prefix + parts.join(' · ')
+    return (data.isCurrentWeek === true ? '本周值日：' : '该周值日：') + parts.join(' · ')
+  }
+
+  function renderDutyPill(data, canEdit) {
+    if (elements.dutyPill === null || elements.dutyPill === undefined) return
+    const duty = objectOf(data.duty)
+    const groupName = trimmedOf(duty.groupName)
+    const members = memberListOf(duty.members)
+    const note = trimmedOf(duty.note)
+
+    clearChildren(elements.dutyPill)
+    elements.dutyPill.appendChild(
+      buildSpan('board-duty-prefix', data.isCurrentWeek === true ? '本周值日' : '该周值日'),
+    )
+    elements.dutyPill.appendChild(buildDutyBadge(groupName))
+    elements.dutyPill.appendChild(buildDutyFlag(duty.hasOverrideGroup === true))
+    for (const member of members) elements.dutyPill.appendChild(buildSpan('cal-duty-person', member))
+    if (note !== '') elements.dutyPill.appendChild(buildSpan('board-duty-inline-note', note))
+
+    const label = dutyAriaLabel(data, duty, members)
+    elements.dutyPill.setAttribute('title', label)
+    elements.dutyPill.setAttribute('aria-label', label)
     elements.dutyPill.disabled = !canEdit
   }
 
@@ -854,6 +954,8 @@
       row.appendChild(placeNode)
     }
 
+    if (entry.remind === true) row.appendChild(buildSpan('cal-schedule-remind', remindLabelFor(entry)))
+
     return row
   }
 
@@ -875,26 +977,40 @@
   function renderDuty(data) {
     const canEdit = data.canEdit !== false
     const duty = objectOf(data.duty)
+    const groupName = trimmedOf(duty.groupName)
+    const members = memberListOf(duty.members)
     setText(elements.dutyTitle, data.isCurrentWeek === true ? '本周值日' : '该周值日')
 
-    renderKv(elements.dutyInfo, [
-      ['值日组', trimmedOf(duty.groupName) === '' ? '待安排' : textOf(duty.groupName)],
-      ['轮换方式', duty.hasOverrideGroup === true ? '本周指定' : '按周自动轮换'],
-      ['备注', trimmedOf(duty.note) === '' ? '—' : textOf(duty.note)],
-    ])
+    const weekNumber = countOf(data.weekNumber)
+    if (elements.dutyWeekTag !== null && elements.dutyWeekTag !== undefined) {
+      elements.dutyWeekTag.hidden = weekNumber === 0
+      elements.dutyWeekTag.textContent = weekNumber === 0 ? '' : '第 ' + weekNumber + ' 周'
+    }
 
-    const members = asArray(duty.members)
-      .map(function (member) {
-        return trimmedOf(member)
-      })
-      .filter(function (member) {
-        return member !== ''
-      })
-    if (elements.dutyMembers !== null && elements.dutyMembers !== undefined) {
-      elements.dutyMembers.textContent =
-        members.length === 0
-          ? '这个组还没有成员，可在「分组与轮换顺序」里填写。'
-          : '成员：' + members.join('、')
+    clearChildren(elements.dutyHero)
+    if (elements.dutyHero !== null && elements.dutyHero !== undefined) {
+      elements.dutyHero.appendChild(buildDutyBadge(groupName))
+      elements.dutyHero.appendChild(buildDutyFlag(duty.hasOverrideGroup === true))
+    }
+
+    clearChildren(elements.dutyPeople)
+    if (elements.dutyPeople !== null && elements.dutyPeople !== undefined) {
+      if (members.length === 0) {
+        const hint = document.createElement('p')
+        hint.className = 'board-hint'
+        hint.textContent = '这个组还没有成员，可在「分组与轮换顺序」里填写。'
+        elements.dutyPeople.appendChild(hint)
+      } else {
+        for (const member of members) {
+          elements.dutyPeople.appendChild(buildSpan('cal-duty-person', member))
+        }
+      }
+    }
+
+    const note = trimmedOf(duty.note)
+    if (elements.dutyNote !== null && elements.dutyNote !== undefined) {
+      elements.dutyNote.hidden = note === ''
+      elements.dutyNote.textContent = note === '' ? '' : '备注：' + note
     }
 
     if (elements.editDuty !== null && elements.editDuty !== undefined) {
@@ -978,10 +1094,13 @@
         elements.addScheduleTitle,
         elements.addSchedulePlace,
         elements.addScheduleNote,
+        elements.addScheduleRemind,
+        elements.addScheduleRemindLead,
         elements.addScheduleSubmit,
       ],
       !canEdit,
     )
+    setDisabled([elements.addScheduleRemindLead], !canEdit || !isChecked(elements.addScheduleRemind))
 
     if (elements.scheduleList === null || elements.scheduleList === undefined) return
     clearChildren(elements.scheduleList)
@@ -1024,6 +1143,7 @@
       placeNode.textContent = place
       head.appendChild(placeNode)
     }
+    if (entry.remind === true) head.appendChild(buildSpan('cal-schedule-remind', remindLabelFor(entry)))
     item.appendChild(head)
 
     const note = trimmedOf(entry.note)
@@ -1059,6 +1179,84 @@
     item.appendChild(actions)
 
     return item
+  }
+
+  // ───────────────────────── 渲染：基础安排 ─────────────────────────
+
+  function isRoutine(routine) {
+    return routine !== null && typeof routine === 'object' && trimmedOf(routine.title) !== ''
+  }
+
+  function buildRoutineRow(routine, manage, canEdit) {
+    const routineId = textOf(routine.id)
+    const row = document.createElement('div')
+    row.className = 'cal-routine board-routine-row'
+    row.setAttribute('data-routine-id', routineId)
+
+    const time = trimmedOf(routine.time)
+    if (time !== '') row.appendChild(buildSpan('cal-routine-time', time))
+    row.appendChild(buildSpan('cal-routine-title', textOf(routine.title)))
+
+    const place = trimmedOf(routine.place)
+    if (place !== '') row.appendChild(buildSpan('cal-routine-meta', '@ ' + place))
+    const note = trimmedOf(routine.note)
+    if (note !== '') row.appendChild(buildSpan('cal-routine-meta', note))
+    if (manage !== true) return row
+
+    row.appendChild(buildSpan('board-routine-days', weekdaysLabel(routine.weekdays)))
+
+    const actions = document.createElement('div')
+    actions.className = 'board-schedule-actions'
+    const edit = document.createElement('button')
+    edit.type = 'button'
+    edit.className = 'board-task-btn'
+    edit.textContent = '编辑'
+    edit.disabled = !canEdit
+    edit.addEventListener('click', function () {
+      openRoutineEditor(routineId, edit)
+    })
+    actions.appendChild(edit)
+
+    const remove = document.createElement('button')
+    remove.type = 'button'
+    remove.className = 'board-task-btn is-danger'
+    remove.textContent = '删除'
+    remove.disabled = !canEdit
+    remove.addEventListener('click', function () {
+      requestRoutineDelete(routineId, remove)
+    })
+    actions.appendChild(remove)
+    row.appendChild(actions)
+
+    return row
+  }
+
+  function renderTodayRoutines(data) {
+    const card = elements.todayRoutineCard
+    if (card === null || card === undefined) return
+    const routines = asArray(data.todayRoutines).filter(isRoutine)
+    clearChildren(elements.todayRoutineList)
+    card.hidden = routines.length === 0
+    if (routines.length === 0) return
+    setText(elements.todayRoutineCount, String(routines.length))
+    for (const routine of routines) {
+      elements.todayRoutineList.appendChild(buildRoutineRow(routine, false, false))
+    }
+  }
+
+  function renderRoutines(data) {
+    const canEdit = data.canEdit !== false
+    const routines = asArray(data.routines).filter(isRoutine)
+    setText(elements.routineCount, String(routines.length))
+    clearChildren(elements.routineList)
+    if (routines.length === 0) {
+      appendEmpty(elements.routineList, '还没有基础安排。设一次「每天例行」，之后每周自动复现，不用每周重排。')
+    } else {
+      for (const routine of routines) {
+        elements.routineList.appendChild(buildRoutineRow(routine, true, canEdit))
+      }
+    }
+    setDisabled([elements.addRoutine], !canEdit)
   }
 
   // ───────────────────────── 渲染：设置 ─────────────────────────
@@ -1350,6 +1548,13 @@
       focusElement(elements.addScheduleWeekday)
       return
     }
+    const remind = isChecked(elements.addScheduleRemind)
+    const leadInput = inputValue(elements.addScheduleRemindLead)
+    if (leadInput !== '' && !isValidLead(leadInput)) {
+      setInlineError(elements.addScheduleError, '提前分钟数请填 0 到 120')
+      focusElement(elements.addScheduleRemindLead)
+      return
+    }
     const payload = {
       weekday,
       time: elements.addScheduleTime === undefined || elements.addScheduleTime === null ? '' : elements.addScheduleTime.value.trim(),
@@ -1362,6 +1567,9 @@
         elements.addScheduleNote === undefined || elements.addScheduleNote === null
           ? ''
           : elements.addScheduleNote.value.trim(),
+      remind,
+      // 空串表示这条沿用设置里的默认提前量。
+      remindLead: leadInput === '' ? '' : Number(leadInput),
       weekOffset: state.weekOffset,
     }
     runAction('add-schedule', payload, {
@@ -1371,6 +1579,8 @@
         setValue(elements.addScheduleTitle, '')
         setValue(elements.addSchedulePlace, '')
         setValue(elements.addScheduleNote, '')
+        setChecked(elements.addScheduleRemind, false)
+        setValue(elements.addScheduleRemindLead, '')
         setInlineError(elements.addScheduleError, '')
         focusElement(elements.addScheduleTitle)
       },
@@ -1400,6 +1610,10 @@
     setValue(elements.scheduleEditorTitleInput, entry.title)
     setValue(elements.scheduleEditorPlace, entry.place)
     setValue(elements.scheduleEditorNote, entry.note)
+    setChecked(elements.scheduleEditorRemind, entry.remind === true)
+    setDisabled([elements.scheduleEditorRemindLead], !isChecked(elements.scheduleEditorRemind))
+    const leadValue = Number(entry.remindLead)
+    setValue(elements.scheduleEditorRemindLead, Number.isFinite(leadValue) ? String(Math.trunc(leadValue)) : '')
     setInlineError(elements.scheduleEditorError, '')
     setDisabled([elements.scheduleEditorSave], false)
     elements.scheduleEditorModal.hidden = false
@@ -1431,6 +1645,12 @@
       focusElement(elements.scheduleEditorWeekday)
       return
     }
+    const leadInput = inputValue(elements.scheduleEditorRemindLead)
+    if (leadInput !== '' && !isValidLead(leadInput)) {
+      setInlineError(elements.scheduleEditorError, '提前分钟数请填 0 到 120')
+      focusElement(elements.scheduleEditorRemindLead)
+      return
+    }
     const payload = {
       id: entryId,
       weekday,
@@ -1447,6 +1667,9 @@
         elements.scheduleEditorNote === undefined || elements.scheduleEditorNote === null
           ? ''
           : elements.scheduleEditorNote.value.trim(),
+      remind: isChecked(elements.scheduleEditorRemind),
+      // 空串表示这条改回用设置里的默认提前量。
+      remindLead: leadInput === '' ? '' : Number(leadInput),
       weekOffset: state.weekOffset,
     }
     const focusId = entryId
@@ -1523,6 +1746,177 @@
     }
     const buttons = row.querySelectorAll('.board-task-btn')
     focusElement(buttons.length > 0 ? buttons[0] : row)
+  }
+
+  // ───────────────────────── 基础安排动作 ─────────────────────────
+
+  function findRoutineById(id) {
+    if (!validData(state.data)) return null
+    const target = textOf(id)
+    for (const routine of asArray(state.data.routines)) {
+      if (routine !== null && typeof routine === 'object' && textOf(routine.id) === target) return routine
+    }
+    return null
+  }
+
+  function buildRoutineDayBoxes() {
+    const holder = elements.routineEditorDays
+    if (holder === null || holder === undefined || holder.childElementCount > 0) return
+    for (let day = 1; day <= 7; day += 1) {
+      const label = document.createElement('label')
+      label.className = 'board-day'
+      const box = document.createElement('input')
+      box.type = 'checkbox'
+      box.value = String(day)
+      label.appendChild(box)
+      label.appendChild(document.createTextNode(WEEKDAY_NAMES[day - 1]))
+      box.addEventListener('change', function () {
+        label.classList.toggle('is-on', box.checked === true)
+      })
+      holder.appendChild(label)
+    }
+  }
+
+  function setRoutineDays(weekdays) {
+    const holder = elements.routineEditorDays
+    if (holder === null || holder === undefined) return
+    const days = asArray(weekdays).map(Number)
+    for (const box of holder.querySelectorAll('input')) {
+      const on = days.includes(Number(box.value))
+      box.checked = on
+      if (box.parentElement !== null && box.parentElement !== undefined) {
+        box.parentElement.classList.toggle('is-on', on)
+      }
+    }
+  }
+
+  function readRoutineDays() {
+    const holder = elements.routineEditorDays
+    if (holder === null || holder === undefined) return []
+    const days = []
+    for (const box of holder.querySelectorAll('input')) {
+      if (box.checked === true) days.push(Number(box.value))
+    }
+    return days
+  }
+
+  function focusRoutineRow(routineId) {
+    const target = trimmedOf(routineId)
+    const list = elements.routineList
+    if (target !== '' && list !== null && list !== undefined) {
+      for (const row of list.querySelectorAll('[data-routine-id]')) {
+        if (row.getAttribute('data-routine-id') !== target) continue
+        const buttons = row.querySelectorAll('.board-task-btn')
+        focusElement(buttons.length > 0 ? buttons[0] : row)
+        return
+      }
+    }
+    focusElement(elements.addRoutine)
+  }
+
+  function openRoutineEditor(routineId, trigger) {
+    const modal = elements.routineEditorModal
+    if (modal === null || modal === undefined) return
+    if (!isEditable()) {
+      showStatus('过去周只读，不能修改基础安排', 'error')
+      return
+    }
+    const editing = trimmedOf(routineId) !== ''
+    const routine = editing ? findRoutineById(routineId) : null
+    if (editing && routine === null) {
+      showStatus('这条基础安排已不存在，请刷新后重试', 'error')
+      requestLoadNow()
+      return
+    }
+    const previousFocus = trigger !== undefined && trigger !== null ? trigger : document.activeElement
+    closeAllModals(false)
+    state.focusReturn =
+      previousFocus !== null && previousFocus !== undefined && previousFocus !== document.body
+        ? previousFocus
+        : null
+    state.routineEditorId = editing ? textOf(routine.id) : ''
+    setText(elements.routineEditorTitle, editing === true ? '编辑基础安排' : '添加基础安排')
+    setValue(elements.routineEditorTitleInput, routine === null ? '' : routine.title)
+    setValue(elements.routineEditorTime, routine === null ? '' : routine.time)
+    setValue(elements.routineEditorPlace, routine === null ? '' : routine.place)
+    setValue(elements.routineEditorNote, routine === null ? '' : routine.note)
+    setRoutineDays(routine === null ? DEFAULT_ROUTINE_WEEKDAYS : routine.weekdays)
+    setInlineError(elements.routineEditorError, '')
+    setDisabled([elements.routineEditorSave], false)
+    modal.hidden = false
+    focusElement(elements.routineEditorTitleInput)
+  }
+
+  function saveRoutineEditor() {
+    if (!isEditable()) {
+      setInlineError(elements.routineEditorError, '过去周只读，不能修改基础安排')
+      return
+    }
+    const title = inputValue(elements.routineEditorTitleInput)
+    if (title === '') {
+      setInlineError(elements.routineEditorError, '请填写例行事项')
+      focusElement(elements.routineEditorTitleInput)
+      return
+    }
+    const days = readRoutineDays()
+    if (days.length === 0) {
+      setInlineError(elements.routineEditorError, '请至少勾选一天')
+      return
+    }
+    const id = state.routineEditorId
+    const payload = {
+      time: inputValue(elements.routineEditorTime),
+      title,
+      place: inputValue(elements.routineEditorPlace),
+      note: inputValue(elements.routineEditorNote),
+      weekdays: days,
+    }
+    if (id !== '') payload.id = id
+    const focusId = id
+    runAction(id === '' ? 'add-routine' : 'update-routine', payload, {
+      buttons: [elements.routineEditorSave],
+      errorTarget: elements.routineEditorError,
+      onSuccess: function () {
+        closeRoutineEditor(false)
+        focusRoutineRow(focusId)
+      },
+    })
+  }
+
+  function closeRoutineEditor(restore) {
+    const modal = elements.routineEditorModal
+    if (modal === null || modal === undefined) return
+    const wasOpen = modal.hidden === false
+    modal.hidden = true
+    state.routineEditorId = ''
+    setInlineError(elements.routineEditorError, '')
+    if (!wasOpen) return
+    const target = state.focusReturn
+    state.focusReturn = null
+    if (restore === true) restoreFocusOrFallback(target)
+  }
+
+  function requestRoutineDelete(routineId, trigger) {
+    const routine = findRoutineById(routineId)
+    if (routine === null) {
+      showStatus('这条基础安排已不存在，请刷新后重试', 'error')
+      requestLoadNow()
+      return
+    }
+    if (!isEditable()) {
+      showStatus('过去周只读，不能删除基础安排', 'error')
+      return
+    }
+    openConfirm({
+      trigger,
+      title: '删除基础安排',
+      message: '确定删除「' + textOf(routine.title) + '」？\n删除后每周都不再出现这条例行事项。',
+      confirmLabel: '删除基础安排',
+      action: function () {
+        return runAction('delete-routine', { id: textOf(routine.id) }, {})
+      },
+      onSuccess: focusAfterDelete,
+    })
   }
 
   // ───────────────────────── 值日动作 ─────────────────────────
@@ -1908,6 +2302,7 @@
     closeGroupsEditor(false)
     closeDutyEditor(false)
     closeScheduleEditor(false)
+    closeRoutineEditor(false)
     closeTaskEditor(false)
     if (restore === true) focusActiveTab()
   }
@@ -1932,6 +2327,11 @@
     if (isModalOpen(elements.scheduleEditorModal)) {
       event.preventDefault()
       closeScheduleEditor(true)
+      return
+    }
+    if (isModalOpen(elements.routineEditorModal)) {
+      event.preventDefault()
+      closeRoutineEditor(true)
       return
     }
     if (isModalOpen(elements.taskEditorModal)) {
@@ -2015,13 +2415,18 @@
     elements.previewCount = byId('preview-count')
     elements.previewSchedule = byId('preview-schedule')
     elements.previewMore = byId('preview-more')
+    elements.todayRoutineCard = byId('today-routine-card')
+    elements.todayRoutineCount = byId('today-routine-count')
+    elements.todayRoutineList = byId('today-routine-list')
     elements.gotoSchedule = byId('goto-schedule')
     elements.announcementInput = byId('announcement-input')
     elements.saveAnnouncement = byId('save-announcement')
 
     elements.dutyTitle = byId('duty-title')
-    elements.dutyInfo = byId('duty-info')
-    elements.dutyMembers = byId('duty-members')
+    elements.dutyWeekTag = byId('duty-week-tag')
+    elements.dutyHero = byId('duty-hero')
+    elements.dutyPeople = byId('duty-people')
+    elements.dutyNote = byId('duty-note')
     elements.editDuty = byId('edit-duty')
     elements.rotationList = byId('rotation-list')
     elements.rotationOrder = byId('rotation-order')
@@ -2035,11 +2440,16 @@
     elements.addScheduleTitle = byId('add-schedule-title')
     elements.addSchedulePlace = byId('add-schedule-place')
     elements.addScheduleNote = byId('add-schedule-note')
+    elements.addScheduleRemind = byId('add-schedule-remind')
+    elements.addScheduleRemindLead = byId('add-schedule-remind-lead')
     elements.addScheduleSubmit = byId('add-schedule-submit')
     elements.addScheduleError = byId('add-schedule-error')
     elements.scheduleTitle = byId('schedule-title')
     elements.scheduleCount = byId('schedule-count')
     elements.scheduleList = byId('schedule-list')
+    elements.routineCount = byId('routine-count')
+    elements.routineList = byId('routine-list')
+    elements.addRoutine = byId('add-routine')
 
     elements.settingsInfo = byId('settings-info')
     elements.settingsStats = byId('settings-stats')
@@ -2068,9 +2478,22 @@
     elements.scheduleEditorTitleInput = byId('schedule-editor-title-input')
     elements.scheduleEditorPlace = byId('schedule-editor-place')
     elements.scheduleEditorNote = byId('schedule-editor-note')
+    elements.scheduleEditorRemind = byId('schedule-editor-remind')
+    elements.scheduleEditorRemindLead = byId('schedule-editor-remind-lead')
     elements.scheduleEditorError = byId('schedule-editor-error')
     elements.scheduleEditorSave = byId('schedule-editor-save')
     elements.scheduleEditorCancel = byId('schedule-editor-cancel')
+
+    elements.routineEditorModal = byId('routine-editor')
+    elements.routineEditorTitle = byId('routine-editor-title')
+    elements.routineEditorTitleInput = byId('routine-editor-title-input')
+    elements.routineEditorTime = byId('routine-editor-time')
+    elements.routineEditorPlace = byId('routine-editor-place')
+    elements.routineEditorNote = byId('routine-editor-note')
+    elements.routineEditorDays = byId('routine-editor-days')
+    elements.routineEditorError = byId('routine-editor-error')
+    elements.routineEditorSave = byId('routine-editor-save')
+    elements.routineEditorCancel = byId('routine-editor-cancel')
 
     elements.dutyEditorModal = byId('duty-editor')
     elements.dutyEditorTitle = byId('duty-editor-title')
@@ -2179,6 +2602,21 @@
       event.preventDefault()
       addSchedule()
     })
+    // 取消勾选提醒时把提前量输入框一起灰掉，避免填了数字却不生效。
+    listen(elements.addScheduleRemind, 'change', function () {
+      setDisabled([elements.addScheduleRemindLead], !isChecked(elements.addScheduleRemind))
+    })
+    listen(elements.scheduleEditorRemind, 'change', function () {
+      setDisabled([elements.scheduleEditorRemindLead], !isChecked(elements.scheduleEditorRemind))
+    })
+
+    listen(elements.addRoutine, 'click', function () {
+      openRoutineEditor('', elements.addRoutine)
+    })
+    listen(elements.routineEditorSave, 'click', saveRoutineEditor)
+    listen(elements.routineEditorCancel, 'click', function () {
+      closeRoutineEditor(true)
+    })
 
     listen(elements.loadDemo, 'click', requestLoadDemo)
     listen(elements.clearButton, 'click', requestClearScope)
@@ -2211,6 +2649,7 @@
 
     bindModalBackdrop(elements.taskEditorModal, closeTaskEditor)
     bindModalBackdrop(elements.scheduleEditorModal, closeScheduleEditor)
+    bindModalBackdrop(elements.routineEditorModal, closeRoutineEditor)
     bindModalBackdrop(elements.dutyEditorModal, closeDutyEditor)
     bindModalBackdrop(elements.groupsEditorModal, closeGroupsEditor)
     bindModalBackdrop(elements.confirmModal, closeConfirm)
@@ -2222,6 +2661,7 @@
     if (state.booted) return
     state.booted = true
     cacheElements()
+    buildRoutineDayBoxes()
 
     if (elements.app === null && elements.status === null) return
     if (elements.status !== null && elements.status !== undefined) {

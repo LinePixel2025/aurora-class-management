@@ -111,6 +111,8 @@ interface BoardPageData {
   completion: number            // 0..100
   tasks: TaskSummary[]          // 今日视图：今天的全部事务（含已完成）；其他视图：该周周一的（一般不用）
   schedule: ScheduleEntry[]     // 当前加载周的全部安排（按周几/时间排序）
+  routines: RoutineEntry[]      // 全部基础安排（全班长期数据，与加载的周无关）
+  todayRoutines: RoutineEntry[] // 其中命中 taskDate 那个周几的基础安排
   announcement: string
   duty: {
     groupName: string
@@ -152,6 +154,18 @@ interface ScheduleEntry {
   place: string
   note: string
   createdAt: string
+  remind: boolean               // 是否在到点前提醒（默认 false）
+  remindLead?: number           // 0..120；缺省 = 用设置里的 notifyScheduleLead
+}
+
+interface RoutineEntry {
+  id: string
+  time: string                  // '' 或 HH:mm
+  title: string
+  place: string
+  note: string
+  weekdays: number[]            // 1..7 去重升序，缺省 [1,2,3,4,5]
+  createdAt: string
 }
 ```
 
@@ -164,9 +178,12 @@ interface ScheduleEntry {
 | `update-task` | `{ id, text?, dueDate?, dueTime?, priority?, category?, assignee?, done? }` | 空字符串表示清除截止/负责人 |
 | `toggle-task` | `{ id, done?: boolean }` | 缺省 `done` 时取反 |
 | `delete-task` | `{ id }` | 任意周、任意天的事务都可删（本周内过去天也允许） |
-| `add-schedule` | `{ weekday, time?, title, place?, note?, weekOffset? }` | 当前加载周 |
-| `update-schedule` | `{ id, weekday?, time?, title?, place?, note?, weekOffset? }` | `weekOffset` 用于定位周 |
+| `add-schedule` | `{ weekday, time?, title, place?, note?, remind?, remindLead?, weekOffset? }` | 当前加载周；`remindLead: ''` = 用默认提前量 |
+| `update-schedule` | `{ id, weekday?, time?, title?, place?, note?, remind?, remindLead?, weekOffset? }` | `weekOffset` 用于定位周；`remindLead: ''` 清除单条提前量 |
 | `delete-schedule` | `{ id, weekOffset?, weekday?, title? }` | 安排允许删除（本周内过去周几也可删） |
+| `add-routine` | `{ time?, title, place?, note?, weekdays? }` | 新增一条基础安排（全班长期，最多 30 条） |
+| `update-routine` | `{ id, time?, title?, place?, note?, weekdays? }` | 逐字段修改；`weekdays` 传数组 |
+| `delete-routine` | `{ id }` 或 `{ title }` | `title` 模糊匹配，必须唯一命中 |
 | `set-duty-week` | `{ weekOffset?, groupId?, note? }` | `groupId: ''` = 恢复自动轮换；`note: ''` = 清空备注 |
 | `save-duty-groups` | `{ groups: { name, members }[], order?: string[] }` | 值日分组与轮换顺序 |
 | `save-announcement` | `{ text, weekOffset? }` | 空字符串 = 清空通知 |
@@ -208,8 +225,11 @@ interface ScheduleEntry {
   - `canEdit: boolean`（**周可编辑**：`weekOffset >= 0`）——本周内过去天也允许编辑/删除/完成，
     仅**过去周**只读；
   - `canAddTask: boolean`（`weekOffset >= 0 && date >= today`）——过去天不能新增事务；
+  - `routines: RoutineEntry[]`（v2.2.0 新增）——命中该天周几的基础安排；顶层同时返回整表 `routines`；
 - 前端：
   - 事务/安排的编辑、删除、完成切换在 `canEdit` 时启用（**不再按天禁用**）；
+  - 基础安排每天只读展示（「每天例行」+ 粉笔粉条目），不在日卡上增删改；
+  - 安排行 `remind === true` 时显示「提前 n 分钟 / 到点前提醒」标记，提醒开关只在事务台「安排」视图编辑；
   - 每天「＋ 安排」在周可编辑时启用；
   - 添加事务输入框/按钮在 `canAddTask` 时启用；
   - 拖拽：源任务在本周可拖；放置目标必须是 `canAddTask` 的天；
@@ -238,14 +258,14 @@ interface WidgetData {
   tasks: TaskSummary[]        // 今天的全部事务（含已完成，已排序）
   schedule: ScheduleEntry[]   // 本周全部安排（按周几/时间排序）
   scheduleCount: number
-  duty: { groupName: string; members: string[]; note: string }
+  routines: RoutineEntry[]    // 今天要做的基础安排（后端已按 todayWeekday 过滤）  duty: { groupName: string; members: string[]; note: string; hasOverrideGroup: boolean; isCurrentWeek: boolean }
   announcement: string
   showCompleted: boolean      // 配置项 showCompleted（今日事务小组件用）
 }
 ```
 
-只读展示（无写操作）：班级名、周次 + 班主任、待办/完成计数与进度、本周值日（组 + 成员 + 备注）、
-本周安排前 3 项（今天高亮）与「还有 n 项」、班级通知摘要（最多 2 行）。
+只读展示（无写操作）：班级名、周次 + 班主任、待办/完成计数与进度、本周值日（组名徽章 + 轮换方式 + 成员 + 备注）、
+每天例行（`routines`，为空时整块隐藏）、本周安排前 3 项（今天高亮，勾了提醒的带「提前 n 分钟」标记）与「还有 n 项」、班级通知摘要（最多 2 行）。
 
 ### 7.2 `week-tasks`（今日事务）
 

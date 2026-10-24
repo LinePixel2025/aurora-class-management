@@ -3,10 +3,15 @@
 /**
  * 可选系统通知引擎。
  *
+ * 两条通道：摘要类（每日简报、周一值日）走系统通知中心 `ctx.notify`，可以稍后回看；
+ * 准点类（事务截止、安排到点前）走 Aurora 0.5.6+ 的流光提醒 `ctx.banner`（屏幕顶端 + 置顶卡片 + 可选朗读），
+ * 宿主没有该能力时自动回落 `ctx.notify`，朗读 / 提示音仍由用户「设置 → 提醒」总闸决定。
+ *
  * 由 main 的 60 秒定时器调用 `checkNotifications`，按天 / 周 / 单条事务去重：
  * - 每日简报：到达 `notifyTime` 后每天最多一次；
  * - 周一值日：周一到达 `notifyTime` 后每周最多一次；
- * - 截止提醒：截止前 `notifyDueLead` 分钟提醒，每条事务每天最多一次，一次最多汇总 3 条。
+ * - 截止提醒：截止前 `notifyDueLead` 分钟提醒，每条事务每天最多一次，一次最多汇总 3 条；
+ * - 安排提醒：每条安排自带 `remind`，到点前 N 分钟提醒（缺省用 `notifyScheduleLead`），每天最多一次，一次最多汇总 3 条。
  *
  * 去重状态单独存在 `notify.v1`，与业务数据 `board.v1` 解耦；通知失败只记 warn 并记录
  * 已尝试，避免每分钟重发；读取 board 等异常自然抛给 main 的定时器统一记录。
@@ -21,8 +26,9 @@ const {
   weekdayIndex,
   normalizeTime,
   parseDateKey,
+  dateKeyOfWeekday,
 } = require('./time')
-const { readSettings } = require('./state')
+const { readSettings, normalizeLead } = require('./state')
 const { loadWeek, loadTasksDueOn } = require('./ops')
 
 const NOTIFY_KEY = 'notify.v1'
@@ -30,24 +36,37 @@ const TEXT_MAX = 40
 const BODY_MAX = 200
 const NOTE_MAX = 60
 const DUE_BATCH_MAX = 3
+const SCHEDULE_BATCH_MAX = 3
 const DEFAULT_DAILY_MINUTES = 7 * 60 + 30
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,40}$/
+
+/** `{ id: 日期键 }` 去重表：只保留合法 id 与合法日期。 */
+function sanitizeDateMap(raw) {
+  const result = {}
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return result
+  for (const [id, value] of Object.entries(raw)) {
+    if (!ID_PATTERN.test(id) || id === '__proto__') continue
+    if (typeof value !== 'string' || parseDateKey(value) === null) continue
+    result[id] = value.trim()
+  }
+  return result
+}
+
+/** 只保留今天记录过的键，避免去重表无限增长。 */
+function keepToday(map, today) {
+  const result = {}
+  for (const [id, date] of Object.entries(map)) if (date === today) result[id] = date
+  return result
+}
 
 /** 净化通知状态；任何非法字段都回落到空值，保证写入始终可控。 */
 function sanitizeNotifyState(raw) {
   const source = raw !== null && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
-  const due = {}
-  if (source.due !== null && typeof source.due === 'object' && !Array.isArray(source.due)) {
-    for (const [id, value] of Object.entries(source.due)) {
-      if (!ID_PATTERN.test(id) || id === '__proto__') continue
-      if (typeof value !== 'string' || parseDateKey(value) === null) continue
-      due[id] = value.trim()
-    }
-  }
   return {
     dailyDate: clip(source.dailyDate, TEXT_MAX),
     dutyWeek: clip(source.dutyWeek, TEXT_MAX),
-    due,
+    due: sanitizeDateMap(source.due),
+    sched: sanitizeDateMap(source.sched),
   }
 }
 
@@ -105,17 +124,29 @@ function dutyBody(data) {
 }
 
 /**
- * 发送一条通知；返回 false 或抛错都只记 warn，不打断后续通知。
+ * 发送一条提醒；`options.banner === true` 走屏幕顶端流光（Aurora 0.5.6+ 的 `ctx.banner`，
+ * 朗读 / 提示音由用户「设置 → 提醒」总闸决定），旧宿主没有该能力时回落系统通知中心。
+ * 返回 false（未送达 / 未显示）或抛错都只记 warn，不打断后续通知，也不重试；
  * 调用方在 await 之后记录去重状态（“已尝试”即记录），避免每分钟重发。
  */
-async function deliver(ctx, title, body) {
+async function deliver(ctx, title, body, options) {
+  const opts = options !== null && typeof options === 'object' ? options : {}
+  const text = clip(body, BODY_MAX)
+  const canBanner = typeof ctx.banner === 'function'
+  const useBanner = opts.banner === true && canBanner
+  if (opts.banner === true && !canBanner) {
+    ctx.log('info', '宿主不支持流光提醒，已回落系统通知', { title })
+  }
   try {
-    const delivered = await ctx.notify({ title, body: clip(body, BODY_MAX) })
+    const delivered =
+      useBanner === true
+        ? await ctx.banner({ title, body: text, speak: opts.speak !== false })
+        : await ctx.notify({ title, body: text })
     if (delivered === false) {
-      ctx.log('warn', '系统通知未送达', { title })
+      ctx.log('warn', useBanner === true ? '流光提醒未显示' : '系统通知未送达', { title })
     }
   } catch (error) {
-    ctx.log('warn', '系统通知发送失败', { title, error: String(error) })
+    ctx.log('warn', useBanner === true ? '流光提醒发送失败' : '系统通知发送失败', { title, error: String(error) })
   }
 }
 
@@ -125,7 +156,14 @@ async function deliver(ctx, title, body) {
  */
 async function checkNotifications(ctx) {
   const settings = readSettings(ctx.config)
-  if (!settings.notifyDaily && !settings.notifyDue && !settings.notifyDuty) return
+  if (
+    !settings.notifyDaily &&
+    !settings.notifyDue &&
+    !settings.notifyDuty &&
+    !settings.notifySchedule
+  ) {
+    return
+  }
 
   const today = todayKey()
   const nowMinutes = timeToMinutes(nowTimeKey())
@@ -182,16 +220,46 @@ async function checkNotifications(ctx) {
     }
     if (picked.length > 0) {
       const body = picked.map((task) => `${task.dueTime} ${clip(task.text, BODY_MAX)}`).join('；')
-      await deliver(ctx, '事务即将截止', body)
+      await deliver(ctx, '事务即将截止', body, { banner: true })
       for (const task of picked) notifyState.due[task.id] = today
     }
   }
 
-  const nextDue = {}
-  for (const [id, date] of Object.entries(notifyState.due)) {
-    if (date === today) nextDue[id] = date
+  if (settings.notifySchedule === true) {
+    const weekData = await ensureData()
+    const schedule = Array.isArray(weekData.schedule) ? weekData.schedule : []
+    const picked = []
+    for (const entry of schedule) {
+      if (picked.length >= SCHEDULE_BATCH_MAX) break
+      if (entry === null || typeof entry !== 'object') continue
+      if (entry.remind !== true) continue
+      if (typeof entry.id !== 'string' || !ID_PATTERN.test(entry.id) || entry.id === '__proto__') continue
+      // 全天安排没有时刻，提前量无从计算；只在对应周几的当天提醒。
+      if (typeof entry.time !== 'string' || entry.time === '') continue
+      if (dateKeyOfWeekday(weekData.weekCtx, entry.weekday) !== today) continue
+      if (notifyState.sched[entry.id] === today) continue
+      const startMinutes = timeToMinutes(entry.time)
+      if (startMinutes === null) continue
+      const entryLead = normalizeLead(entry.remindLead)
+      const lead = entryLead === null ? settings.notifyScheduleLead : entryLead
+      // 只在 [开始前 lead 分钟, 开始时刻] 窗口内提醒；已经开始了不再提醒。
+      if (nowMinutes < startMinutes - lead || nowMinutes > startMinutes) continue
+      picked.push(entry)
+    }
+    if (picked.length > 0) {
+      const body = picked
+        .map((entry) => {
+          const place = entry.place === '' ? '' : ` @ ${clip(entry.place, TEXT_MAX)}`
+          return `${entry.time} ${clip(entry.title, TEXT_MAX)}${place}`
+        })
+        .join('；')
+      await deliver(ctx, '安排即将开始', body, { banner: true })
+      for (const entry of picked) notifyState.sched[entry.id] = today
+    }
   }
-  notifyState.due = nextDue
+
+  notifyState.due = keepToday(notifyState.due, today)
+  notifyState.sched = keepToday(notifyState.sched, today)
 
   if (JSON.stringify(notifyState) !== before) {
     await writeNotifyState(ctx, notifyState)

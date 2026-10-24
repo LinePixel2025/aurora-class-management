@@ -2,16 +2,17 @@
 
 > GitHub：<https://github.com/LinePixel2025/aurora-class-management>
 
-插件 **v2.1.2**，最低宿主 **Aurora 0.5.3（插件 API v1）**。班级事务管理系统：
+插件 **v2.2.0**，最低宿主 **Aurora 0.5.3（插件 API v1）**。班级事务管理系统：
 
-- **2 张页面型桌面小组件**：班级速览（含本周值日）与今日事务（含本周安排）——桌面层、不启用毛玻璃，可拖动 / 缩放，位置由 Aurora 记住；右上角无关闭键，小组件里可直接快速添加、完成 / 恢复、删除今日待办；
+- **2 张页面型桌面小组件**：班级速览（含本周值日与每天例行）与今日事务（含每天例行与本周安排）——桌面层、不启用毛玻璃，可拖动 / 缩放，位置由 Aurora 记住；右上角无关闭键，小组件里可直接快速添加、完成 / 恢复、删除今日待办；
 - **2 个页面型右栏面板**：**班级事务台**（`/class`，今日 / 值日 / 安排 / 设置 4 视图）与**班级周历**（`/calendar`，垂直 7 天时间线），两者共用同一套「黑板 / 备课本」设计系统，都可直接删除事务与安排；
 - **删除不再难找**：事务台里未完成、**已完成**事务与每条安排都有行内「删除」按钮，走页面内确认弹层；
 - **本周内过去天可编辑**：周历里只限制「过去周」只读；本周内周一到昨天的事务 / 安排也能编辑、删除、完成（新增事务仍只允许今天与未来）；
 - **今日事务**：事务按天管理，界面只显示今天；旧事务保留最近 7 天，超出自动清理，可由 Agent 按日期查回；
-- **整周值日**：一周由一组负责，按分组顺序每周轮换，不再按天换人；
-- **Agent 可改**：12 个插件工具 + 1 个 Skill + 3 条斜杠命令（`/class` / `/week-plan` / `/calendar`）；写入后 2 面板 + 2 小组件自动刷新，不用手动点刷新；
-- **可选系统通知**：每日简报 / 截止提醒 / 周一值日提醒，默认全关，可在插件设置里开启并配置提醒时间；
+- **整周值日**：一周由一组负责，按分组顺序每周轮换，不再按天换人；值日在 4 个界面都拆成「组名徽章 / 轮换方式 / 成员 / 备注」四层显示，不再挤成一行；
+- **基础安排（每天例行）**：早读、眼保健操这类每天都做的事设一次即可，每条带适用星期（默认周一~周五），每周自动铺到周历日卡、事务台与小组件，不用每周重排；
+- **Agent 可改**：13 个插件工具 + 1 个 Skill + 3 条斜杠命令（`/class` / `/week-plan` / `/calendar`）；写入后 2 面板 + 2 小组件自动刷新，不用手动点刷新；
+- **可选提醒**：每日简报 / 截止提醒 / 周一值日提醒 / **安排到点前提醒**（每条安排可单独开关与提前分钟，未设则用默认提前量），默认全关，可在插件设置里开启并配置提醒时间；摘要类走系统通知中心，准点类（截止 / 安排）走 Aurora 0.5.6+ 的**流光提醒 `ctx.banner`**（屏幕顶端 + 置顶卡片 + 可选朗读），旧宿主自动回落系统通知；
 - 数据只存插件私有存储，不联网、不读写用户文件、不接触 Aurora 凭据。
 
 ![2 张页面型桌面小组件（示例数据，含模拟宿主标题栏）](docs/images/widgets-dark.png)
@@ -38,8 +39,8 @@ class-management/                 插件包（zip 根目录）
   ui/widget-overview.html|js      页面型桌面小组件「班级速览」
   ui/widget-tasks.html|js         页面型桌面小组件「今日事务」
   ui/widget.css                   两张小组件共用的紧凑样式
-GitHub Releases（安装包附件，仓库外）  v2.1.2 安装包；本地构建输出 dist/class-management-2.1.2.zip（已 gitignore）
-dev/test-plugin.mjs               离线全链路测试（mock 宿主 + 宿主原版 zod 清单解析，148/148）
+GitHub Releases（安装包附件，仓库外）  v2.1.2 安装包；本地构建输出 dist/class-management-2.2.0.zip（已 gitignore）
+dev/test-plugin.mjs               离线全链路测试（mock 宿主 + 宿主原版 zod 清单解析，166/166）
 dev/preview.mjs                   页面型事务台 / 小组件预览与截图（生成 dev/.cache，可拷入 docs/images）
 dev/preview-calendar.mjs          页面型周历预览与截图（合成页面 + mock auroraPlugin）
 dev/page-api.md                   页面型面板 / 小组件 API 契约（开发用，不随插件发布）
@@ -62,7 +63,7 @@ docs/aurora-widget-desktop-level.md  Aurora 桌面层与页面型小组件能力
    powershell -ExecutionPolicy Bypass -File scripts\build.ps1
    ```
 
-   产物为 `dist\class-management-2.1.2.zip`。
+   产物为 `dist\class-management-2.2.0.zip`。
 
 2. Aurora → 设置 → 插件 → 已安装 → **安装插件包**，选择下载的 zip；
 3. 核对权限、工具后安装。桌面上会出现 2 张小组件；右栏「插件面板」或 `/class` / `/calendar` 可打开事务台与周历。
@@ -158,19 +159,21 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 
 当前离线验证结果：
 
-- `check-plugin.mjs`：通过（`com.classmanagement.board` v2.1.2，2 个页面型面板、2 个页面型桌面小组件、3 条命令）；
-- `dev/test-plugin.mjs`：**148/148 项检查通过**；
-  覆盖时间 / 周次、存储读取、串行并发写、旧数据迁移、2 个页面型小组件、12 个工具、页面型事务台 4 视图与全部动作
-  （含已完成事务删除、安排删除、值日 / 分组 / 通知 / 清理 / 示例周）、页面型周历（7 天 load、事务与安排动作、拖动、
-  本周过去天可编辑与过去周只读）、命令、推送目标 / 条数（2 面板 + 2 小组件 = 4 条）、可选系统通知
-  （三类通知的开关 / 提醒时间 / 去重 / 重启后不重发）、整周计划失败回滚、跨天 / 跨周刷新、容量修剪，
+- `check-plugin.mjs`：通过（`com.classmanagement.board` v2.2.0，2 个页面型面板、2 个页面型桌面小组件、3 条命令）；
+- `dev/test-plugin.mjs`：**168/168 项检查通过**；
+  覆盖时间 / 周次、存储读取、串行并发写、旧数据迁移（含旧数据补齐 `routines`）、2 个页面型小组件、13 个工具、
+  页面型事务台 4 视图与全部动作（含已完成事务删除、安排删除、值日 / 分组 / 通知 / 清理 / 示例周 / 基础安排逐条增删改）、
+  页面型周历（7 天 load、事务与安排动作、拖动、基础安排按星期铺到日卡、本周过去天可编辑与过去周只读）、命令、
+  推送目标 / 条数（2 面板 + 2 小组件 = 4 条）、可选提醒（四类开关 / 提醒时间与提前量 / 流光 `ctx.banner` 与系统通知两条通道 /
+  旧宿主无 `ctx.banner` 时回落 / `banner` 返回 false 不重试 / 去重 / 重启后不重发 / 不额外推送）、
+  整周计划失败回滚、跨天 / 跨周刷新、容量修剪，
   以及页面静态约束（无内联脚本 / 事件、无 fetch / 本地存储 / 外链、相对资源存在）；
 - 清单通过从本机 Aurora 提取的宿主原版 zod `parsePluginManifest`；
-- `node dev/preview.mjs`：生成事务台 4 视图 / 空态 / 浅色 / 弹层与 2 张小组件共 13 张截图到 `dev/.cache/`
+- `node dev/preview.mjs`：生成事务台 4 视图 / 空态 / 浅色 / 三类弹层（事务、安排含提醒、基础安排）/ 删除确认与 2 张小组件共 15 张截图到 `dev/.cache/`
   （含 640×520 / 720×900 的课堂放大预览，验证字号随窗口缩放）；
   `node dev/preview-calendar.mjs`：生成周历 3 张截图；README 配图由这些图拷入 `docs/images/`；
-- `dist/class-management-2.1.2.zip`：112.4 KB，SHA-256 `87E4428D51A3C2959D6C6ED63D4E3C3A7E2C72B86B46B37EE20F383D8A1CD1DE`；
-  manifest 在 zip 根，条目使用正斜杠，无 `node_modules` / `dev/` / 缓存文件。
+- 本地构建产物 `dist/class-management-2.2.0.zip`：125.3 KB，SHA-256 `BA10B1E6F154E48ECB8038C518B0264F069436CE33D78992EC5C956177608010`；
+  manifest 在 zip 根，条目使用正斜杠，无 `node_modules` / `dev/` / 缓存文件。GitHub Release 上仍是在线的 v2.1.2 安装包，未重新发布。
 
 真机验收清单（需要你在 Aurora 里点一遍）：
 
@@ -180,22 +183,27 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 - [ ] 小组件里能快速添加今日事务、点圆点完成 / 恢复、删除待办（二次确认）；
 - [ ] `/class` 打开页面型班级事务台：4 个 tab 可切换，今日 / 值日 / 安排 / 设置视觉与周历一致；
 - [ ] 事务台里未完成与**已完成**事务都能删除；每条安排都能编辑 / 删除；删除走页面内确认弹层；
+- [ ] 值日在事务台今日 / 值日视图、周历头部、班级速览四处都是「组名徽章 + 轮换方式 + 成员 + 备注」分层显示，长名单换行不糊；
+- [ ] 「安排 → 基础安排」能逐条添加 / 编辑 / 删除，勾选的星期会在周历对应日卡、事务台今日与两张小组件里出现；
+- [ ] 安排勾选「到点前提醒」后行上有「提前 n 分钟」标记；到点前收到一条通知，同一条当天不重复；
 - [ ] 周历页本周内过去几天的事务 / 安排可以编辑 / 删除；切到上一周为只读；
 - [ ] Agent 调用工具后 2 个面板 + 2 张小组件立即更新（不点刷新）；
 - [ ] 跨天 / 跨周后小组件自动显示新一天 / 新一周；昨天事务在 7 天内可用 Agent 查回；
-- [ ] 可选通知：开启三类提醒后到点收到一次，重启 Aurora 后不重复发送；
+- [ ] 可选通知：开启四类提醒后到点收到一次，重启 Aurora 后不重复发送；
 - [ ] 停用 / 卸载插件后小组件关闭。
 
 ## Agent 工具
 
 `get_overview`、`list_tasks`、`add_task`、`update_task`、`complete_task`、`delete_task`、
-`set_duty_week`、`set_duty_groups`、`add_schedule`、`delete_schedule`、
+`set_duty_week`、`set_duty_groups`、`add_schedule`、`delete_schedule`、`set_routines`、
 `set_announcement`、`apply_week_plan`。
 
 - 工具名为 `plugin.com.classmanagement.board.<name>`；
 - 只读工具注册为 `readonly: true`，只读档也能用；
 - 事务按天：`add_task` 默认今天，`date` 可排未来某天；`list_tasks` / `get_overview` 的 `date` 可查最近 7 天历史；
 - 值日按周：`set_duty_week` 指定某一周的组，`set_duty_groups` 编辑分组与轮换顺序；`set_duty_day` 已删除；
+- 基础安排是全班长期数据：`set_routines` **整表替换**（每条带 `weekdays`，默认周一~周五），改一条也要带上其余条目；
+- 安排提醒：`add_schedule` / `apply_week_plan` 的 `remind` + `remindLead`，需在插件设置开启「安排提醒」；
 - 写入后通过 `ctx.ui.panelEvent({ panelId: 'board' | 'calendar' } | { widgetId: ... })` 推送 `board.changed`，
   一次变更最多 4 条（2 个面板 + 2 个小组件）；
 - 斜杠命令 3 条：`/class`（打开班级事务台）、`/week-plan`（总结今日计划）、`/calendar`（打开班级周历）；
