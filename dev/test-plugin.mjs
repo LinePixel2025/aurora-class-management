@@ -227,7 +227,7 @@ function createContext(options) {
     ...(settings.config || {}),
   }
   const ctx = {
-    plugin: { id: PLUGIN_ID, version: '2.1.0', root: PLUGIN, dataDir: PLUGIN, isDev: true },
+    plugin: { id: PLUGIN_ID, version: '2.1.1', root: PLUGIN, dataDir: PLUGIN, isDev: true },
     config,
     storage: {
       async get(key) {
@@ -673,11 +673,11 @@ async function mainTest() {
   // ═════════════════════════ 清单 ═════════════════════════
 
   header('清单与页面化声明')
-  await test('清单基础字段（版本 2.1.0 / 入口 / 激活方式）', async () => {
+  await test('清单基础字段（版本 2.1.1 / 入口 / 激活方式）', async () => {
     assertEqual(manifest.id, PLUGIN_ID)
-    assertEqual(manifest.version, '2.1.0')
+    assertEqual(manifest.version, '2.1.1')
     assertEqual(manifest.apiVersion, 1)
-    assertEqual(manifest.minAuroraVersion, '0.5.2')
+    assertEqual(manifest.minAuroraVersion, '0.5.3')
     assertEqual(manifest.main, 'main.js')
     assertEqual(manifest.activation, 'startup')
     assertEqual(manifest.license, 'MIT')
@@ -794,6 +794,7 @@ async function mainTest() {
       assertEqual(widget.slot, 'desktop', `${widget.id} slot 应为 desktop`)
       assertEqual(widget.windowLevel, 'desktop', `${widget.id} windowLevel 应为 desktop`)
       assertEqual(widget.windowMaterial, 'none', `${widget.id} windowMaterial 应为 none（已去掉毛玻璃）`)
+      assertEqual(widget.hideCloseButton, true, `${widget.id} 应隐藏宿主右上角关闭按钮`)
       assert(typeof widget.entry === 'string' && widget.entry.startsWith('ui/') && widget.entry.endsWith('.html'), `${widget.id} 应声明 entry 页面`)
       assert(!hasOwn(widget, 'schema'), `${widget.id} 不应再声明 schema（已页面化）`)
       assert(typeof widget.title === 'string' && widget.title !== '', `${widget.id} 缺少标题`)

@@ -30,12 +30,12 @@ v2.1.0 把 **班级事务台（board）改为页面型面板**，并把 **两张
 "widgets": [
   {
     "id": "week-overview", "title": "班级速览", "icon": "Gauge", "slot": "desktop",
-    "windowLevel": "desktop", "windowMaterial": "none",
+    "windowLevel": "desktop", "windowMaterial": "none", "hideCloseButton": true,
     "entry": "ui/widget-overview.html", "defaultSize": { "width": 320, "height": 300 }
   },
   {
     "id": "week-tasks", "title": "今日事务", "icon": "ListChecks", "slot": "desktop",
-    "windowLevel": "desktop", "windowMaterial": "none",
+    "windowLevel": "desktop", "windowMaterial": "none", "hideCloseButton": true,
     "entry": "ui/widget-tasks.html", "defaultSize": { "width": 360, "height": 460 }
   }
 ]
@@ -285,4 +285,4 @@ interface WidgetData {
   - 推送目标仍为 2 面板 + 2 小组件 = 4 条；
   - 原有时间/存储/迁移/7 天历史/通知/工具/命令检查全部保留。
 - `node dev/preview.mjs` 生成「事务台 4 视图 + 2 张小组件」页面截图；`node dev/preview-calendar.mjs` 继续出周历截图。
-- `powershell -ExecutionPolicy Bypass -File scripts/build.ps1` 通过并更新 zip SHA（版本 2.1.0）。
+- `powershell -ExecutionPolicy Bypass -File scripts/build.ps1` 通过并更新 zip SHA（版本 2.1.1）。

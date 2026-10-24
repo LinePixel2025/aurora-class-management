@@ -2,9 +2,9 @@
 
 > GitHub：<https://github.com/LinePixel2025/aurora-class-management>
 
-插件 **v2.1.0**，最低宿主 **Aurora 0.5.2（插件 API v1）**。班级事务管理系统：
+插件 **v2.1.1**，最低宿主 **Aurora 0.5.3（插件 API v1）**。班级事务管理系统：
 
-- **2 张页面型桌面小组件**：班级速览（含本周值日）与今日事务（含本周安排）——桌面层、不启用毛玻璃，可拖动 / 缩放 / 隐藏，位置由 Aurora 记住；小组件里可直接快速添加、完成 / 恢复、删除今日待办；
+- **2 张页面型桌面小组件**：班级速览（含本周值日）与今日事务（含本周安排）——桌面层、不启用毛玻璃，可拖动 / 缩放，位置由 Aurora 记住；右上角无关闭键，小组件里可直接快速添加、完成 / 恢复、删除今日待办；
 - **2 个页面型右栏面板**：**班级事务台**（`/class`，今日 / 值日 / 安排 / 设置 4 视图）与**班级周历**（`/calendar`，垂直 7 天时间线），两者共用同一套「黑板 / 备课本」设计系统，都可直接删除事务与安排；
 - **删除不再难找**：事务台里未完成、**已完成**事务与每条安排都有行内「删除」按钮，走页面内确认弹层；
 - **本周内过去天可编辑**：周历里只限制「过去周」只读；本周内周一到昨天的事务 / 安排也能编辑、删除、完成（新增事务仍只允许今天与未来）；
@@ -38,7 +38,7 @@ class-management/                 插件包（zip 根目录）
   ui/widget-overview.html|js      页面型桌面小组件「班级速览」
   ui/widget-tasks.html|js         页面型桌面小组件「今日事务」
   ui/widget.css                   两张小组件共用的紧凑样式
-GitHub Releases（安装包附件，仓库外）  v2.1.0 安装包；本地构建输出 dist/class-management-2.1.0.zip（已 gitignore）
+GitHub Releases（安装包附件，仓库外）  v2.1.1 安装包；本地构建输出 dist/class-management-2.1.1.zip（已 gitignore）
 dev/test-plugin.mjs               离线全链路测试（mock 宿主 + 宿主原版 zod 清单解析，148/148）
 dev/preview.mjs                   页面型事务台 / 小组件预览与截图（生成 dev/.cache，可拷入 docs/images）
 dev/preview-calendar.mjs          页面型周历预览与截图（合成页面 + mock auroraPlugin）
@@ -62,7 +62,7 @@ docs/aurora-widget-desktop-level.md  Aurora 桌面层与页面型小组件能力
    powershell -ExecutionPolicy Bypass -File scripts\build.ps1
    ```
 
-   产物为 `dist\class-management-2.1.0.zip`。
+   产物为 `dist\class-management-2.1.1.zip`。
 
 2. Aurora → 设置 → 插件 → 已安装 → **安装插件包**，选择下载的 zip；
 3. 核对权限、工具后安装。桌面上会出现 2 张小组件；右栏「插件面板」或 `/class` / `/calendar` 可打开事务台与周历。
@@ -92,13 +92,15 @@ docs/aurora-widget-desktop-level.md  Aurora 桌面层与页面型小组件能力
 | 班级速览 | 班级名、周次、班主任、今日事务计数与完成率、本周值日组与成员 / 备注、本周安排前 3 项（今天高亮）、班级通知摘要 | 320×300 | 页面型 `ui/widget-overview.html` | `desktop` / `none` |
 | 今日事务 | 今日日期与计数、完成率、快速添加、待办行（完成 / 恢复、截止信息、删除）、已完成区（可恢复 / 删除）、本周安排（今天高亮） | 360×460 | 页面型 `ui/widget-tasks.html` | `desktop` / `none` |
 
-- 都是 Aurora 的**桌面层小组件**（无边框、不占任务栏），可拖动、缩放、隐藏；位置与显隐由 Aurora 持久化。
+- 都是 Aurora 的**桌面层小组件**（无边框、不占任务栏），可拖动、缩放；位置与显隐由 Aurora 持久化。
+- **右上角不显示关闭键**：两张小组件声明 `hideCloseButton: true`，宿主标题栏只保留标题；
+  隐藏 / 恢复改到 设置 → 插件 → 班级事务台 →「显示在桌面」。该字段需要支持它的 Aurora 版本，旧宿主会忽略。
 - `desktop` 是尽力而为：宿主按“普通窗口 + Win32 owner 亲和 + 恢复守护”实现，owner 亲和失败时回退普通层（`normal`）。
 - **不启用毛玻璃**：v2.1.0 起 `windowMaterial: "none"`，小组件为不透明卡片；v2.0.0 的 Acrylic 方案已移除。
 - 小组件页面运行在宿主沙箱 webview 中，只通过 `window.auroraPlugin.request` / `onEvent` 与插件后端通信。
 - 在小组件里可以直接快速添加今日事务、点圆点完成 / 恢复、删除待办（页面内二次确认，不需要打开面板）。
-- **右上角的 `×` 是 Aurora 宿主绘制的“隐藏小组件”按钮**，不属于插件清单或页面 DOM，插件侧无法删除；
-  误点后到 设置 → 插件 → 班级事务台 → 「显示在桌面」重新打开即可（位置沿用）。
+- **右上角的 `×` 由宿主绘制**，不属于插件页面 DOM；本插件通过清单 `hideCloseButton: true` 请求宿主不渲染它。
+  隐藏 / 恢复在 设置 → 插件 → 班级事务台 →「显示在桌面」操作（位置沿用）。
 - 层级 / 材质可在 Aurora 设置 → 插件 → 班级事务台 → 对应小组件逐 widget 覆盖（跟随插件 / 置顶 / 普通 / 桌面层）。
 - 小组件始终显示**今天 / 本周**；跨天 / 跨周时插件自动推送刷新。
 
@@ -154,7 +156,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 
 当前离线验证结果：
 
-- `check-plugin.mjs`：通过（`com.classmanagement.board` v2.1.0，2 个页面型面板、2 个页面型桌面小组件、3 条命令）；
+- `check-plugin.mjs`：通过（`com.classmanagement.board` v2.1.1，2 个页面型面板、2 个页面型桌面小组件、3 条命令）；
 - `dev/test-plugin.mjs`：**148/148 项检查通过**；
   覆盖时间 / 周次、存储读取、串行并发写、旧数据迁移、2 个页面型小组件、12 个工具、页面型事务台 4 视图与全部动作
   （含已完成事务删除、安排删除、值日 / 分组 / 通知 / 清理 / 示例周）、页面型周历（7 天 load、事务与安排动作、拖动、
@@ -164,13 +166,14 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 - 清单通过从本机 Aurora 提取的宿主原版 zod `parsePluginManifest`；
 - `node dev/preview.mjs`：生成事务台 4 视图 / 空态 / 浅色 / 弹层与 2 张小组件共 12 张截图到 `dev/.cache/`；
   `node dev/preview-calendar.mjs`：生成周历 3 张截图；README 配图由这些图拷入 `docs/images/`；
-- `dist/class-management-2.1.0.zip`：111.9 KB，SHA-256 `09AFDE10EAFB94F52F62006CC6F862E74322B5567EC10CF9C0A034CF7D7CBDDE`；
+- `dist/class-management-2.1.1.zip`：112.0 KB，SHA-256 `CD876CA9ACE9337D5A66CE65E6748CEA51BA6F60ABAF126B976CFF6543BB87D4`；
   manifest 在 zip 根，条目使用正斜杠，无 `node_modules` / `dev/` / 缓存文件。
 
 真机验收清单（需要你在 Aurora 里点一遍）：
 
 - [ ] 插件状态「运行中」，桌面出现 **2 张小组件**（班级速览 / 今日事务），为不透明卡片、无毛玻璃；
-- [ ] 小组件可拖动 / 缩放，重启 Aurora 后位置保留；右上角 `×` 由宿主提供（非插件按钮），隐藏后可在设置里重新打开；
+- [ ] 小组件可拖动 / 缩放，重启 Aurora 后位置保留；标题栏无 `×`（`hideCloseButton: true`），
+      隐藏 / 恢复在设置 →「显示在桌面」操作；
 - [ ] 小组件里能快速添加今日事务、点圆点完成 / 恢复、删除待办（二次确认）；
 - [ ] `/class` 打开页面型班级事务台：4 个 tab 可切换，今日 / 值日 / 安排 / 设置视觉与周历一致；
 - [ ] 事务台里未完成与**已完成**事务都能删除；每条安排都能编辑 / 删除；删除走页面内确认弹层；
@@ -219,18 +222,21 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 通知通过宿主 `ctx.notify` 发送，**只在 Aurora 运行时生效**：不是系统级后台常驻提醒，插件不常驻后台，
 Aurora 退出期间也不会补发；通知内容全部来自本地数据，不联网。
 
-## 平台特性与边界（Aurora 0.5.2）
+## 平台特性与边界（Aurora 0.5.3）
 
 - **2 个页面型面板**（`board` / `calendar`）与 **2 张页面型桌面小组件**（`week-overview` / `week-tasks`）
   都由清单 `entry` 指定插件目录内 HTML，由宿主在页面沙箱中加载；页面只通过
   `window.auroraPlugin.request` / `onEvent` 通信，无内联脚本、无 CDN、无 `fetch`。
 - **桌面小组件窗口**是宿主创建的无边框浮动 `BrowserWindow`（不占任务栏），不是插件自建窗口；
-  Aurora 0.5.2 起支持 `windowLevel`（`floating` / `normal` / `desktop`）与 `windowMaterial`（`none` / `acrylic`）：
-  本项目 2 张小组件声明 `desktop` + `none`（v2.0.0 曾用 `acrylic`，v2.1.0 已去掉毛玻璃）。
+  Aurora 0.5.2 起支持 `windowLevel`（`floating` / `normal` / `desktop`）与 `windowMaterial`（`none` / `acrylic`），
+  0.5.3 起支持 `hideCloseButton`：
+  本项目 2 张小组件声明 `desktop` + `none`（v2.0.0 曾用 `acrylic`，v2.1.0 已去掉毛玻璃），
+  并通过 `hideCloseButton: true` 请求宿主不渲染右上角关闭键。
 - **`desktop` 是尽力而为的桌面层**：由宿主以“普通窗口 + Win32 owner 亲和 + 恢复守护”实现，owner 亲和失败时回退普通层（`normal`）；
   它不是壁纸层嵌入、不是桌面图标层、也不是点击穿透。
-- **小组件标题栏由宿主绘制**：标题与右上角 `×`（隐藏按钮）不在插件页面 DOM 里，插件清单没有隐藏它的字段；
-  插件只负责标题栏下方的内容。隐藏后可在 设置 → 插件 → 「显示在桌面」恢复。
+- **小组件标题栏由宿主绘制**：标题与右上角的隐藏按钮不在插件页面 DOM 里；本插件声明
+  `hideCloseButton: true` 让宿主不渲染该按钮，插件只负责标题栏下方的内容。隐藏 / 恢复在
+  设置 → 插件 → 「显示在桌面」操作。
 - **层级可由用户覆盖**：Aurora 设置 → 插件 → 班级事务台 → 对应小组件，可逐 widget 改为跟随插件 / 置顶 / 普通 / 桌面层；
   插件只声明默认值，实际层级以宿主的用户覆盖为准。
 - **推送目标有限**：一次业务变更向 2 个面板（`board` / `calendar`）+ 2 张桌面小组件各推 1 条 `board.changed`，共 4 条，
@@ -251,7 +257,7 @@ Aurora 退出期间也不会补发；通知内容全部来自本地数据，不�
 | 安装时报「清单校验失败」 | 本地有 Aurora 官方工具包时运行 `node plugin-dev-kit/tools/check-plugin.mjs class-management`；否则把完整错误发到 issue |
 | 小组件不显示 | 设置 → 插件 → 班级事务台 →「显示在桌面」开关；或检查是否停用 |
 | 小组件显示「正在加载…」或空白 | 设置 → 插件 → 打开插件日志，检查 `%APPDATA%\Aurora\logs\plugins\com.classmanagement.board.log`；页面型小组件加载失败时宿主会提示 `页面加载失败` |
-| 小组件被 `×` 隐藏了 | 设置 → 插件 → 班级事务台 → 对应小组件「显示在桌面」重新打开，位置沿用 |
+| 小组件被隐藏了 | 设置 → 插件 → 班级事务台 → 对应小组件「显示在桌面」重新打开，位置沿用 |
 | 桌面层不生效 / 被其他窗口盖住 | 设置 → 插件 → 班级事务台 → 对应小组件，检查层级是否被用户覆盖为「跟随插件 / 置顶 / 普通」；`desktop` 不置顶，属预期 |
 | 页面型面板打不开 / 白屏 | 检查插件日志；页面只允许自身资源，若手动改过 `ui/*.html` 的 CSP / 资源路径会加载失败 |
 | 删除按钮禁用 | 过去周只读：切回本周或未来周；本周内过去几天的事务与安排仍可删除 |

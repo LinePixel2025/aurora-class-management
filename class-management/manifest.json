@@ -1,9 +1,9 @@
 {
   "id": "com.classmanagement.board",
   "name": "班级事务台",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "apiVersion": 1,
-  "minAuroraVersion": "0.5.2",
+  "minAuroraVersion": "0.5.3",
   "description": "2 张页面型桌面小组件（桌面层、无毛玻璃）显示班级速览与今日事务；2 个页面型面板（班级事务台 + 班级周历，同一套黑板视觉）与 3 条斜杠命令；12 个 Agent 工具；可选系统通知。",
   "author": {
     "name": "LinePixel2025"
@@ -580,6 +580,7 @@
         "slot": "desktop",
         "windowLevel": "desktop",
         "windowMaterial": "none",
+        "hideCloseButton": true,
         "entry": "ui/widget-overview.html",
         "defaultSize": {
           "width": 320,
@@ -593,6 +594,7 @@
         "slot": "desktop",
         "windowLevel": "desktop",
         "windowMaterial": "none",
+        "hideCloseButton": true,
         "entry": "ui/widget-tasks.html",
         "defaultSize": {
           "width": 360,

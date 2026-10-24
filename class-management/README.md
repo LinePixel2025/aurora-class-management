@@ -8,7 +8,7 @@
 用自然语言就能改值日、加事务、排安排。
 
 - 插件 id：`com.classmanagement.board`
-- 版本：`2.1.0`（插件 API v1，Aurora ≥ 0.5.2）
+- 版本：`2.1.1`（插件 API v1，Aurora ≥ 0.5.3）
 - 权限：`tools` / `skills` / `commands` / `storage` / `config` / `logging` / `ui.panels` / `ui.widgets` / `notifications`
 - 面板：页面型「班级事务台」（`/class`，4 视图）+ 页面型「班级周历」（`/calendar`，垂直 7 天时间线）
 - 小组件：`windowLevel: "desktop"`、`windowMaterial: "none"`（不启用原生毛玻璃）
@@ -19,7 +19,7 @@
 ### 方式 A：安装插件包（推荐）
 
 1. 在项目根目录运行 `powershell -ExecutionPolicy Bypass -File scripts\build.ps1`，得到
-   `dist/class-management-2.1.0.zip`（zip 根目录直接是 `manifest.json`）；
+   `dist/class-management-2.1.1.zip`（zip 根目录直接是 `manifest.json`）；
 2. Aurora → 设置 → 插件 → 已安装 → **安装插件包**，选择该 zip；
 3. 核对权限与工具后安装。安装完成后桌面出现 2 张小组件，右栏可打开「班级事务台」或「班级周历」。
 4. 如需免掉只读工具的逐次确认，在插件详情点「信任此插件」。
@@ -43,15 +43,17 @@
 | 班级速览 | 班级名、周次、班主任、今日待办/完成/逾期计数与进度、本周值日组与成员/备注、本周安排前 3 项（今天高亮）、班级通知摘要 | 320×300 | 页面型 `ui/widget-overview.html` | `desktop` | `none` |
 | 今日事务 | 今日日期与计数、完成率、快速添加、待办行（完成/恢复、截止信息、删除）、已完成区（显示时可恢复/删除）、本周安排（今天高亮） | 360×460 | 页面型 `ui/widget-tasks.html` | `desktop` | `none` |
 
-- 都是 Aurora 的**桌面层小组件**（无边框、不占任务栏），可拖动、缩放、隐藏；位置 / 尺寸 / 显隐由 Aurora 持久化，重启后保留。
+- 都是 Aurora 的**桌面层小组件**（无边框、不占任务栏），可拖动、缩放；位置 / 尺寸 / 显隐由 Aurora 持久化，重启后保留。
+- **右上角无关闭键**：两张小组件声明 `hideCloseButton: true`，标题栏只保留标题；
+  隐藏 / 恢复在 设置 → 插件 → 班级事务台 →「显示在桌面」。该字段需要支持它的 Aurora 版本，旧宿主会忽略。
 - `desktop` 是尽力而为：宿主按“普通窗口 + Win32 owner 亲和 + 恢复守护”实现，owner 亲和失败时回退普通层（`normal`）；
   不是壁纸层嵌入、不是桌面图标层、也不是点击穿透。
 - **不启用毛玻璃**：v2.1.0 起改为 `windowMaterial: "none"`，小组件是不透明卡片，内容样式与班级周历一致；
   v2.0.0 的 Acrylic 需要 Windows 11 22H2+ 且宿主外观毛玻璃开启，观感不稳定，本版已去掉。
 - 小组件页面运行在宿主沙箱的 webview 里，只通过 `window.auroraPlugin.request` / `onEvent` 与插件后端通信。
 - 小组件里可以直接：快速添加今日事务、点圆点完成 / 恢复、删除待办（页面内二次确认）；**不需要打开面板**。
-- 右上角的 `×` 是 **Aurora 宿主**绘制的“隐藏小组件”按钮，不属于插件清单或页面 DOM，**插件侧无法删除它**；
-  误点后到 设置 → 插件 → 班级事务台 → 「显示在桌面」重新打开即可（位置沿用）。
+- 右上角的 `×` 是 **Aurora 宿主**绘制的“隐藏小组件”按钮，不属于插件页面 DOM；本插件通过清单
+  `hideCloseButton: true` 请求宿主不渲染它，隐藏 / 恢复改到 设置 → 插件 → 班级事务台 →「显示在桌面」。
 - 插件只声明默认层级 / 材质；在 Aurora 设置 → 插件 → 班级事务台 → 对应小组件可逐 widget 改为跟随插件 / 置顶 / 普通 / 桌面层。
 - 小组件始终显示**今天 / 本周**；跨天/跨周时插件会自动推送刷新，不需要手动点刷新。
 
@@ -194,7 +196,7 @@ README.md                  本说明（随插件包发布）
 在项目根目录：
 
 ```powershell
-node plugin-dev-kit/tools/check-plugin.mjs class-management   # 清单 / 权限 / 静态校验（v2.1.0）
+node plugin-dev-kit/tools/check-plugin.mjs class-management   # 清单 / 权限 / 静态校验（v2.1.1）
 node dev/test-plugin.mjs                                      # 离线全链路测试（mock 宿主 + 宿主原版 zod 清单解析，148/148）
 node dev/preview.mjs                                          # 事务台 4 视图 + 2 张小组件页面预览与截图（dev/.cache）
 node dev/preview-calendar.mjs                                 # 页面型「班级周历」预览与截图（dev/.cache）
@@ -206,18 +208,19 @@ powershell -ExecutionPolicy Bypass -File scripts/build.ps1    # 校验 + 测试 
 - `dev/preview.mjs` / `dev/preview-calendar.mjs` 把真实的页面 HTML/CSS/JS 合成一份可用 `file://` 打开的预览页，
   注入只读 mock `window.auroraPlugin` 后交给本机 Chrome / Edge headless 截图；产物只写在 `dev/.cache/`，
   不随插件包发布；README 配图由这些图拷入 `docs/images/`。
-- 当前离线验证：`check-plugin.mjs` 通过（v2.1.0），`dev/test-plugin.mjs` **148/148 通过**。
+- 当前离线验证：`check-plugin.mjs` 通过（v2.1.1），`dev/test-plugin.mjs` **148/148 通过**。
 
-### 已知平台特性（Aurora 0.5.2）
+### 已知平台特性（Aurora 0.5.3）
 
 - 页面型面板 / 页面型桌面小组件由清单 `entry` 指定插件目录内的 HTML；页面运行在宿主沙箱中，
   只通过 `window.auroraPlugin.request` / `onEvent` 与插件后端通信，不使用内联脚本、CDN 或 `fetch`。
 - 桌面小组件由宿主创建，插件 API v1 不允许插件自建窗口；0.5.2 起支持
-  `windowLevel`（`floating` / `normal` / `desktop`）与 `windowMaterial`（`none` / `acrylic`）。
+  `windowLevel`（`floating` / `normal` / `desktop`）与 `windowMaterial`（`none` / `acrylic`），
+  0.5.3 起支持 `hideCloseButton`。
 - 本插件 2 张小组件默认 `desktop` / `none`：`desktop` 由宿主按“普通窗口 + Win32 owner 亲和 + 恢复守护”实现，
   owner 亲和失败时回退普通层（`normal`）；它不是壁纸层嵌入、不是桌面图标层、也不是点击穿透。
-- 小组件窗口标题栏（标题 + `×` 隐藏按钮）由**宿主**绘制，插件清单没有隐藏它的字段；
-  插件只负责标题栏下方页面内容，`×` 的显隐行为以宿主为准。
+- 小组件窗口标题栏由**宿主**绘制；本插件声明 `hideCloseButton: true`，宿主不再渲染右上角的 `×`。
+  插件只负责标题栏下方页面内容，隐藏 / 恢复在 Aurora 设置 →「显示在桌面」操作。
 - 用户可在 Aurora 设置 → 插件 → 班级事务台 → 对应小组件逐 widget 覆盖层级（跟随插件 / 置顶 / 普通 / 桌面层）；
   插件只声明默认值，不读写宿主的窗口布局覆盖。
 - 提示条（edge-bar）小组件与本期 2 张桌面小组件不同槽位；单插件最多 4 个小组件。
