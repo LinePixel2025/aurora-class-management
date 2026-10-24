@@ -37,7 +37,7 @@ function asarFiles() {
   return null
 }
 
-function readAsarEntry(asarPath, parts) {
+function readAsarHeader(asarPath) {
   const fd = fs.openSync(asarPath, 'r')
   try {
     const head = Buffer.alloc(16)
@@ -45,20 +45,63 @@ function readAsarEntry(asarPath, parts) {
     const headerSize = head.readUInt32LE(12)
     const headerBuffer = Buffer.alloc(headerSize)
     fs.readSync(fd, headerBuffer, 0, headerSize, 16)
-    const index = JSON.parse(headerBuffer.toString('utf8'))
-    let node = index
-    for (const part of parts) {
-      if (!node.files || node.files[part] === undefined) return null
-      node = node.files[part]
-    }
-    if (node.files !== undefined) return null
-    const size = Number(node.size)
-    const buffer = Buffer.alloc(size)
-    fs.readSync(fd, buffer, 0, size, 16 + Math.ceil(headerSize / 4) * 4 + Number(node.offset))
-    return buffer
+    return { headerSize, index: JSON.parse(headerBuffer.toString('utf8')) }
   } finally {
     fs.closeSync(fd)
   }
+}
+
+function readAsarEntry(asarPath, parts) {
+  const { headerSize, index } = readAsarHeader(asarPath)
+  let node = index
+  for (const part of parts) {
+    if (!node.files || node.files[part] === undefined) return null
+    node = node.files[part]
+  }
+  if (node.files !== undefined) return null
+  const size = Number(node.size)
+  const buffer = Buffer.alloc(size)
+  const fd = fs.openSync(asarPath, 'r')
+  try {
+    fs.readSync(fd, buffer, 0, size, 16 + Math.ceil(headerSize / 4) * 4 + Number(node.offset))
+  } finally {
+    fs.closeSync(fd)
+  }
+  return buffer
+}
+
+function walkAsarFiles(node, prefix, out) {
+  if (!node || node.files === undefined) return
+  for (const [name, child] of Object.entries(node.files)) {
+    const parts = [...prefix, name]
+    if (child.files !== undefined) walkAsarFiles(child, parts, out)
+    else out.push(parts.join('/'))
+  }
+}
+
+/** 列出 asar 内指定目录下的全部文件路径（用 `/` 分隔）。仅用于按文件名模式发现构建哈希。 */
+function listAsarFiles(asarPath, parts = ['out', 'renderer', 'assets']) {
+  const { index } = readAsarHeader(asarPath)
+  let node = index
+  for (const part of parts) {
+    if (!node.files || node.files[part] === undefined) return []
+    node = node.files[part]
+  }
+  const files = []
+  walkAsarFiles(node, parts, files)
+  return files
+}
+
+/** 在 asar 资源里按正则找到唯一目标；找不到时抛错并列出已见资源，绝不静默回退到旧哈希。 */
+function findAsset(asarPath, pattern, label) {
+  const files = listAsarFiles(asarPath)
+  const found = files.find((file) => pattern.test(file))
+  if (found === undefined) {
+    throw new Error(
+      `app.asar 中缺少预览所需的样式文件（${label}）：没有匹配 ${String(pattern)} 的资源。已见资源：\n${files.join('\n')}`,
+    )
+  }
+  return found.split('/')
 }
 
 function findBlock(source, openIndex) {
@@ -367,10 +410,10 @@ async function mainRun() {
     process.exitCode = 1
     return
   }
-  const theme = readAsarEntry(asar, ['out', 'renderer', 'assets', 'theme-BXOgGZMN.css'])
-  const rendererCss = readAsarEntry(asar, ['out', 'renderer', 'assets', 'PluginSchemaRenderer-B9w_IhaU.css'])
-  const widgetCss = readAsarEntry(asar, ['out', 'renderer', 'assets', 'widget-D6DYJhPI.css'])
-  const pageCss = readAsarEntry(asar, ['out', 'renderer', 'assets', 'PluginPageFrame-Cq1k62Fi.css'])
+  const theme = readAsarEntry(asar, findAsset(asar, /\/theme-[^/]+\.css$/, 'theme-*.css'))
+  const rendererCss = readAsarEntry(asar, findAsset(asar, /\/PluginSchemaRenderer-[^/]+\.css$/, 'PluginSchemaRenderer-*.css'))
+  const widgetCss = readAsarEntry(asar, findAsset(asar, /\/widget-[^/]+\.css$/, 'widget-*.css'))
+  const pageCss = readAsarEntry(asar, findAsset(asar, /\/PluginPageFrame-[^/]+\.css$/, 'PluginPageFrame-*.css'))
   if (theme === null || rendererCss === null || widgetCss === null || pageCss === null) {
     process.stderr.write('app.asar 中缺少预览所需的样式文件，Aurora 版本可能已变化。\n')
     process.exitCode = 1
