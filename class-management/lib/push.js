@@ -2,11 +2,11 @@
 
 /**
  * 推送：只发给本插件清单里声明过的目标。
- * 目标：面板 `board` + 4 个桌面小组件；事件名 `board.changed`；每次业务变更最多 5 条。
+ * 目标：面板 `board` + 2 个桌面小组件；事件名 `board.changed`；每次业务变更最多 3 条。
  */
 
 const PANEL_ID = 'board'
-const WIDGET_IDS = ['duty-week', 'week-tasks', 'week-schedule', 'week-overview']
+const WIDGET_IDS = ['week-overview', 'week-tasks']
 const EVENT = 'board.changed'
 
 async function pushWidgets(ctx, reason) {

@@ -3,6 +3,9 @@
 /**
  * 业务操作层：所有写操作都通过 `updateBoard` 串行化、原子落盘；
  * 工具（Agent）、面板、浮窗共用同一套函数，保证口径一致。
+ *
+ * 事务按天（task.date），只显示今天；旧事务保留 HISTORY_DAYS 天供查询。
+ * 值日按周轮换一组，不再有按天覆盖。
  */
 
 const {
@@ -19,6 +22,7 @@ const {
   todayKey,
   addDays,
   dateKeyOf,
+  dateLabel,
   parseDateKey,
   resolveWeekContext,
   normalizeOffset,
@@ -29,6 +33,7 @@ const {
 } = require('./time')
 const {
   LIMITS,
+  HISTORY_DAYS,
   DataError,
   readSettings,
   readBoard,
@@ -39,16 +44,10 @@ const {
   emptyWeek,
   boardStats,
   seedGroups,
+  historyCutoff,
+  purgeStoredTaskHistory,
 } = require('./state')
-const {
-  resolveDuty,
-  todayDutyText,
-  formatDutyPlanText,
-  formatDutyGroupsText,
-  formatOrderText,
-  formatDutyOverrideText,
-  parseDutyPlanText,
-} = require('./duty')
+const { resolveDuty, formatDutyGroupsText, formatOrderText } = require('./duty')
 
 function readWeekOffset(value, fallback = 0) {
   if (value === undefined || value === null || value === '') return fallback
@@ -57,6 +56,33 @@ function readWeekOffset(value, fallback = 0) {
   const integer = Math.trunc(number)
   if (integer < -12 || integer > 12) throw new DataError('weekOffset 必须在 -12 到 12 之间')
   return integer
+}
+
+/** 读取任务日期：默认今天；不允许过去日期（历史只读）。 */
+function readTaskDate(value, options) {
+  const settings = options !== null && typeof options === 'object' ? options : {}
+  const raw = typeof value === 'string' ? value.trim() : ''
+  if (raw === '') return todayKey()
+  if (parseDateKey(raw) === null) throw new DataError('date 格式应为 YYYY-MM-DD')
+  if (offsetOfDateKey(raw) === null) throw new DataError('date 超出当前 ±12 周的可管理范围')
+  const today = todayKey()
+  if (raw < today && settings.allowPast !== true) {
+    throw new DataError('不能给过去的日期添加事务；历史事务只能在最近 7 天内查询')
+  }
+  if (raw < today && raw < historyCutoff(today)) {
+    throw new DataError(`只保留最近 ${HISTORY_DAYS} 天的事务`)
+  }
+  return raw
+}
+
+function readHistoryDate(value) {
+  return readTaskDate(value, { allowPast: true })
+}
+
+function weekOffsetOfDate(date) {
+  const offset = offsetOfDateKey(date)
+  if (offset === null) throw new DataError('date 超出当前 ±12 周的可管理范围')
+  return offset
 }
 
 function isOverdue(task, weekCtx) {
@@ -126,22 +152,58 @@ function completionPercent(counts) {
   return Math.round((counts.done / counts.total) * 100)
 }
 
+/** 本周 + 后 3 周的轮换预览，用来直观看到“一周一组”。 */
+function buildRotationPreview(board, settings, baseCtx, count) {
+  const rows = []
+  const total = count === undefined ? 4 : count
+  for (let index = 0; index < total; index += 1) {
+    const offset = Math.min(12, Math.max(-12, baseCtx.offset + index))
+    const context = resolveWeekContext(offset, settings, board)
+    const duty = resolveDuty(board, context.key, context.weekNumber)
+    rows.push({
+      week: `${context.label}${context.key === baseCtx.key ? '（本周）' : ''}`,
+      group: duty.groupName,
+    })
+    if (offset >= 12) break
+  }
+  return rows
+}
+
 /**
- * 读取某个周的全部展示数据（面板、浮窗、文本输出共用）。
+ * 读取某一天 + 所在周的展示数据（面板、浮窗、文本输出共用）。
+ * - 选项为数字时等价于 `{ weekOffset }`
+ * - `date` 给了就从日期反推周；否则事务日期默认今天
  */
-async function loadWeek(ctx, weekOffset) {
+async function loadWeek(ctx, options) {
+  const opt =
+    typeof options === 'number'
+      ? { weekOffset: options }
+      : options !== null && typeof options === 'object'
+        ? options
+        : {}
   const board = await readBoard(ctx)
   const settings = readSettings(ctx.config)
   const ui = await readUi(ctx)
-  const offset = weekOffset === undefined ? ui.weekOffset : normalizeOffset(weekOffset)
-  const weekCtx = resolveWeekContext(offset, settings, board)
+  let weekOffset = opt.weekOffset === undefined ? normalizeOffset(ui.weekOffset) : normalizeOffset(opt.weekOffset)
+  let weekCtx = resolveWeekContext(weekOffset, settings, board)
+  let taskDate = todayKey()
+  if (opt.date !== undefined && opt.date !== null && opt.date !== '') {
+    taskDate = readHistoryDate(opt.date)
+    weekOffset = weekOffsetOfDate(taskDate)
+    weekCtx = resolveWeekContext(weekOffset, settings, board)
+  } else if (weekOffset !== 0) {
+    // 查看其他周时默认看该周周一的事务，避免把“今天”的事务混进下周总览。
+    taskDate = dateKeyOf(weekCtx.monday)
+  }
   const week = board.weeks[weekCtx.key] !== undefined ? board.weeks[weekCtx.key] : emptyWeek()
   const duty = resolveDuty(board, weekCtx.key, weekCtx.weekNumber)
-  const tasks = sortTasks(week.tasks)
+  const allTasks = sortTasks(week.tasks)
+  const tasks = allTasks.filter((task) => task.date === taskDate)
+  const pendingTasks = tasks.filter((task) => !task.done)
+  const doneTasks = tasks.filter((task) => task.done)
   const schedule = sortSchedule(week.schedule)
   const counts = taskCounts(tasks, weekCtx)
-  const todayDuty = todayDutyText(duty, weekCtx.todayWeekday)
-  const dutyDays = Object.keys(week.duty.days).length
+  const today = todayKey()
   return {
     board,
     settings,
@@ -149,18 +211,19 @@ async function loadWeek(ctx, weekOffset) {
     weekCtx,
     week,
     duty,
+    taskDate,
+    taskDateLabel: dateLabel(taskDate),
+    today,
+    isToday: taskDate === today,
     tasks,
-    pendingTasks: tasks.filter((task) => !task.done),
-    doneTasks: tasks.filter((task) => task.done),
+    pendingTasks,
+    doneTasks,
     schedule,
     announcement: week.announcement,
     counts,
     completion: completionPercent(counts),
-    todayDuty,
-    hasDuty: duty.days.some((entry) => entry.names.length > 0 || entry.area !== '' || entry.note !== ''),
-    hasDutyOverride: dutyDays > 0 || week.duty.groupId !== undefined || week.duty.note !== undefined,
-    dutyOverrideText: formatDutyOverrideText(week),
-    dutyPlanText: formatDutyPlanText(duty),
+    hasDuty: duty.members.length > 0 || duty.hasOverrideGroup || duty.note !== '',
+    rotationPreview: buildRotationPreview(board, settings, weekCtx),
     groupsText: formatDutyGroupsText(board),
     orderText: formatOrderText(board),
     stats: boardStats(board),
@@ -193,7 +256,17 @@ function findGroup(board, value) {
   )
 }
 
-function matchTask(tasks, options) {
+function findTaskById(board, value) {
+  const id = typeof value === 'string' ? value.trim() : ''
+  if (id === '') return null
+  for (const [weekKey, week] of Object.entries(board.weeks)) {
+    const task = week.tasks.find((item) => item.id === id)
+    if (task !== undefined) return { weekKey, week, task }
+  }
+  return null
+}
+
+function matchTask(tasks, options, label) {
   const id = typeof options.id === 'string' ? options.id.trim() : ''
   if (id !== '') {
     const found = tasks.find((task) => task.id === id)
@@ -203,7 +276,9 @@ function matchTask(tasks, options) {
   const query = clip(options.text, LIMITS.maxTaskText).toLowerCase()
   if (query === '') throw new DataError('请提供事务 id 或内容片段')
   const matches = tasks.filter((task) => task.text.toLowerCase().includes(query))
-  if (matches.length === 0) throw new DataError(`本周没有匹配「${query}」的事务`)
+  if (matches.length === 0) {
+    throw new DataError(`${label === undefined ? '今天' : label}没有匹配「${query}」的事务`)
+  }
   if (matches.length > 1) {
     throw new DataError(
       `「${query}」匹配到 ${matches.length} 条事务，请改用 id：${matches
@@ -215,7 +290,7 @@ function matchTask(tasks, options) {
   return matches[0]
 }
 
-function buildTask(input, existingIds) {
+function buildTask(input, existingIds, date) {
   const text = clip(input.text, LIMITS.maxTaskText)
   if (text === '') throw new DataError('事务内容不能为空')
   const dueDateRaw = typeof input.dueDate === 'string' ? input.dueDate.trim() : ''
@@ -229,6 +304,7 @@ function buildTask(input, existingIds) {
     id: makeId('t', existingIds),
     text,
     done: false,
+    date,
     priority: normalizePriority(input.priority),
     category: clip(input.category, LIMITS.maxCategory) || '事务',
     dueDate: dueDateRaw,
@@ -267,42 +343,38 @@ function taskSummary(task, weekCtx) {
   return { ...task, dueLabel: dueLabel(task, weekCtx), overdue: isOverdue(task, weekCtx) }
 }
 
+function taskWeekCtx(task, settings, board) {
+  const offset = offsetOfDateKey(task.date)
+  return resolveWeekContext(offset === null ? 0 : offset, settings, board)
+}
+
 // ───────────────────────── 事务 ─────────────────────────
 
 async function addTask(ctx, input) {
+  const date = readTaskDate(input.date)
+  const weekOffset = weekOffsetOfDate(date)
   const settings = readSettings(ctx.config)
-  const dueDateRaw = typeof input.dueDate === 'string' ? input.dueDate.trim() : ''
-  let offsetInput = input.weekOffset
-  if ((offsetInput === undefined || offsetInput === null || offsetInput === '') && parseDateKey(dueDateRaw) !== null) {
-    const derived = offsetOfDateKey(dueDateRaw)
-    if (derived === null) throw new DataError('截止日期超出当前 ±12 周的可管理范围')
-    offsetInput = derived
-  }
-  const weekOffset = readWeekOffset(offsetInput, 0)
-  const result = await updateBoard(ctx, async (board) => {
+  return updateBoard(ctx, async (board) => {
     const weekCtx = resolveWeekContext(weekOffset, settings, board)
     const week = ensureWeek(board, weekCtx.key)
     if (week.tasks.length >= LIMITS.maxTasksPerWeek) {
-      throw new DataError(`本周事务已达 ${LIMITS.maxTasksPerWeek} 条上限`)
+      throw new DataError(`本周事务总量已达 ${LIMITS.maxTasksPerWeek} 条上限（含近 7 天历史）`)
     }
-    const task = buildTask(input, week.tasks.map((item) => item.id))
+    const task = buildTask(input, week.tasks.map((item) => item.id), date)
     week.tasks.push(task)
     touch(week)
-    return { task: taskSummary(task, weekCtx), weekCtx }
+    return { task: taskSummary(task, weekCtx), weekCtx, date }
   })
-  return { ...result, weekOffset }
 }
 
 async function updateTask(ctx, input) {
   const id = typeof input.id === 'string' ? input.id.trim() : ''
   if (id === '') throw new DataError('请提供事务 id')
-  const weekOffset = readWeekOffset(input.weekOffset, 0)
   const settings = readSettings(ctx.config)
-  const result = await updateBoard(ctx, async (board) => {
-    const weekCtx = resolveWeekContext(weekOffset, settings, board)
-    const week = ensureWeek(board, weekCtx.key)
-    const task = week.tasks.find((item) => item.id === id)
-    if (task === undefined) throw new DataError(`找不到事务 id：${id}`)
+  return updateBoard(ctx, async (board) => {
+    const found = findTaskById(board, id)
+    if (found === null) throw new DataError(`找不到事务 id：${id}`)
+    const { week, task } = found
     if (input.text !== undefined) {
       const text = clip(input.text, LIMITS.maxTaskText)
       if (text === '') throw new DataError('事务内容不能为空')
@@ -333,97 +405,75 @@ async function updateTask(ctx, input) {
       else delete task.doneAt
     }
     touch(week)
-    return { task: taskSummary(task, weekCtx), weekCtx }
+    return { task: taskSummary(task, taskWeekCtx(task, settings, board)), date: task.date }
   })
-  return result
 }
 
 async function completeTask(ctx, input) {
-  const weekOffset = readWeekOffset(input.weekOffset, 0)
+  const id = typeof input.id === 'string' ? input.id.trim() : ''
+  const date = id === '' ? readHistoryDate(input.date) : ''
   const settings = readSettings(ctx.config)
   return updateBoard(ctx, async (board) => {
-    const weekCtx = resolveWeekContext(weekOffset, settings, board)
-    const week = ensureWeek(board, weekCtx.key)
-    const task = matchTask(week.tasks, input)
+    let week = null
+    let task = null
+    if (id !== '') {
+      const found = findTaskById(board, id)
+      if (found === null) throw new DataError(`找不到事务 id：${id}`)
+      week = found.week
+      task = found.task
+    } else {
+      const weekCtx = resolveWeekContext(weekOffsetOfDate(date), settings, board)
+      week = ensureWeek(board, weekCtx.key)
+      task = matchTask(week.tasks.filter((item) => item.date === date), input, dateLabel(date))
+    }
     task.done = input.done !== false
     if (task.done) task.doneAt = new Date(nowMs()).toISOString()
     else delete task.doneAt
     touch(week)
-    return { task: taskSummary(task, weekCtx), weekCtx }
+    const weekCtx = taskWeekCtx(task, settings, board)
+    return { task: taskSummary(task, weekCtx), weekCtx, date: task.date }
   })
 }
 
 async function deleteTask(ctx, input) {
-  const weekOffset = readWeekOffset(input.weekOffset, 0)
+  const id = typeof input.id === 'string' ? input.id.trim() : ''
+  const date = id === '' ? readHistoryDate(input.date) : ''
   const settings = readSettings(ctx.config)
   return updateBoard(ctx, async (board) => {
-    const weekCtx = resolveWeekContext(weekOffset, settings, board)
-    const week = ensureWeek(board, weekCtx.key)
-    const task = matchTask(week.tasks, input)
-    const index = week.tasks.indexOf(task)
-    week.tasks.splice(index, 1)
+    let week = null
+    let task = null
+    if (id !== '') {
+      const found = findTaskById(board, id)
+      if (found === null) throw new DataError(`找不到事务 id：${id}`)
+      week = found.week
+      task = found.task
+    } else {
+      const weekCtx = resolveWeekContext(weekOffsetOfDate(date), settings, board)
+      week = ensureWeek(board, weekCtx.key)
+      task = matchTask(week.tasks.filter((item) => item.date === date), input, dateLabel(date))
+    }
+    week.tasks.splice(week.tasks.indexOf(task), 1)
     touch(week)
-    return { task: taskSummary(task, weekCtx), weekCtx }
+    const weekCtx = taskWeekCtx(task, settings, board)
+    return { task: taskSummary(task, weekCtx), weekCtx, date: task.date }
   })
 }
 
 async function listTasks(ctx, input) {
-  const weekOffset = readWeekOffset(input.weekOffset, 0)
+  const date = readHistoryDate(input.date)
+  const weekOffset = weekOffsetOfDate(date)
   const status = ['pending', 'done', 'all'].includes(input.status) ? input.status : 'pending'
   const category = clip(input.category, LIMITS.maxCategory)
   const limit = Math.min(60, Math.max(1, Number.isInteger(Number(input.limit)) ? Number(input.limit) : 30))
-  const data = await loadWeek(ctx, weekOffset)
+  const data = await loadWeek(ctx, { weekOffset, date })
   let tasks = data.tasks
   if (status === 'pending') tasks = tasks.filter((task) => !task.done)
   if (status === 'done') tasks = tasks.filter((task) => task.done)
   if (category !== '') tasks = tasks.filter((task) => task.category === category)
-  return { data, tasks: tasks.slice(0, limit), total: tasks.length, status, category }
-}
-
-async function clearDone(ctx, weekOffsetInput) {
-  const weekOffset = readWeekOffset(weekOffsetInput, 0)
-  const settings = readSettings(ctx.config)
-  return updateBoard(ctx, async (board) => {
-    const weekCtx = resolveWeekContext(weekOffset, settings, board)
-    const week = ensureWeek(board, weekCtx.key)
-    const before = week.tasks.length
-    week.tasks = week.tasks.filter((task) => !task.done)
-    const removed = before - week.tasks.length
-    if (removed > 0) touch(week)
-    return { weekCtx, removed }
-  })
+  return { data, tasks: tasks.slice(0, limit), total: tasks.length, status, category, date }
 }
 
 // ───────────────────────── 值日 ─────────────────────────
-
-async function setDutyDay(ctx, input) {
-  const weekday = Number(input.weekday)
-  if (!Number.isInteger(weekday) || weekday < 1 || weekday > 7) {
-    throw new DataError('weekday 必须是 1（周一）到 7（周日）')
-  }
-  const weekOffset = readWeekOffset(input.weekOffset, 0)
-  const settings = readSettings(ctx.config)
-  return updateBoard(ctx, async (board) => {
-    const weekCtx = resolveWeekContext(weekOffset, settings, board)
-    const week = ensureWeek(board, weekCtx.key)
-    const key = String(weekday)
-    if (input.clear === true) {
-      delete week.duty.days[key]
-      touch(week)
-      return { weekCtx, weekday, cleared: true }
-    }
-    const names = splitNames(input.names)
-    const area = clip(input.area, LIMITS.maxArea)
-    const note = clip(input.note, LIMITS.maxNote)
-    if (names.length === 0 && area === '' && note === '') {
-      delete week.duty.days[key]
-    } else {
-      week.duty.days[key] = { names, area, note }
-    }
-    touch(week)
-    return { weekCtx, weekday, cleared: names.length === 0 && area === '' && note === '', names, area, note }
-  })
-}
 
 async function setDutyWeek(ctx, input) {
   const weekOffset = readWeekOffset(input.weekOffset, 0)
@@ -451,7 +501,8 @@ async function setDutyWeek(ctx, input) {
       else week.duty.note = note
     }
     touch(week)
-    return { weekCtx, groupName: week.duty.groupId !== undefined ? findGroup(board, week.duty.groupId)?.name : '' }
+    const group = week.duty.groupId !== undefined ? findGroup(board, week.duty.groupId) : null
+    return { weekCtx, groupName: group === null ? '' : group.name }
   })
 }
 
@@ -507,41 +558,15 @@ async function setDutyGroups(ctx, input) {
 
     const groupIds = new Set(groups.map((group) => group.id))
     for (const week of Object.values(board.weeks)) {
-      if (typeof week.duty.groupId === 'string' && !groupIds.has(week.duty.groupId)) delete week.duty.groupId
+      if (typeof week.duty.groupId === 'string' && !groupIds.has(week.duty.groupId)) {
+        delete week.duty.groupId
+      }
     }
     return { groups: groups.length, order: order.length }
   })
 }
 
-async function setDutyPlan(ctx, text, weekOffsetInput) {
-  const parsed = parseDutyPlanText(text)
-  if (parsed.issues.length > 0) {
-    throw new DataError(`值日文本有无法识别的行：${parsed.issues.slice(0, 3).join('；')}`)
-  }
-  const weekOffset = readWeekOffset(weekOffsetInput, 0)
-  const settings = readSettings(ctx.config)
-  return updateBoard(ctx, async (board) => {
-    const weekCtx = resolveWeekContext(weekOffset, settings, board)
-    const week = ensureWeek(board, weekCtx.key)
-    week.duty.days = parsed.days
-    touch(week)
-    return { weekCtx, days: Object.keys(parsed.days).length }
-  })
-}
-
-async function resetDutyPlan(ctx, weekOffsetInput) {
-  const weekOffset = readWeekOffset(weekOffsetInput, 0)
-  const settings = readSettings(ctx.config)
-  return updateBoard(ctx, async (board) => {
-    const weekCtx = resolveWeekContext(weekOffset, settings, board)
-    const week = ensureWeek(board, weekCtx.key)
-    week.duty.days = {}
-    touch(week)
-    return { weekCtx }
-  })
-}
-
-// ───────────────────────── 安排 / 通知 ─────────────────────────
+// ───────────────────────── 安排 / 通知 / 整周计划 ─────────────────────────
 
 async function addSchedule(ctx, input) {
   const weekOffset = readWeekOffset(input.weekOffset, 0)
@@ -642,8 +667,6 @@ async function setAnnouncement(ctx, input) {
   })
 }
 
-// ───────────────────────── 整周计划 / 清理 / 示例 ─────────────────────────
-
 async function applyWeekPlan(ctx, input) {
   const plan = input.plan
   if (plan === null || typeof plan !== 'object' || Array.isArray(plan)) {
@@ -654,16 +677,33 @@ async function applyWeekPlan(ctx, input) {
   return updateBoard(ctx, async (board) => {
     const weekCtx = resolveWeekContext(weekOffset, settings, board)
     const week = ensureWeek(board, weekCtx.key)
-    const summary = { weekLabel: weekCtx.label, tasksAdded: 0, scheduleAdded: 0, dutyDays: 0, announcement: false }
+    const mondayKey = dateKeyOf(weekCtx.monday)
+    const sundayKey = dateKeyOf(weekCtx.sunday)
+    const defaultTaskDate = weekOffset === 0 ? todayKey() : mondayKey
+    const summary = {
+      weekLabel: weekCtx.label,
+      tasksAdded: 0,
+      scheduleAdded: 0,
+      dutyGroup: '',
+      announcement: false,
+    }
 
     if (plan.replaceTasks === true) week.tasks = []
     if (plan.replaceSchedule === true) week.schedule = []
 
     for (const item of Array.isArray(plan.tasks) ? plan.tasks : []) {
       if (week.tasks.length >= LIMITS.maxTasksPerWeek) {
-        throw new DataError(`本周事务会超过 ${LIMITS.maxTasksPerWeek} 条上限`)
+        throw new DataError(`本周事务会超过 ${LIMITS.maxTasksPerWeek} 条上限（含近 7 天历史）`)
       }
-      week.tasks.push(buildTask(item, week.tasks.map((task) => task.id)))
+      let date = defaultTaskDate
+      if (item.date !== undefined && item.date !== null && item.date !== '') {
+        if (parseDateKey(item.date) === null) throw new DataError('plan.tasks[].date 格式应为 YYYY-MM-DD')
+        date = String(item.date).trim()
+      }
+      if (date < mondayKey || date > sundayKey) {
+        throw new DataError('plan.tasks[].date 必须落在目标周内')
+      }
+      week.tasks.push(buildTask(item, week.tasks.map((task) => task.id), date))
       summary.tasksAdded += 1
     }
     for (const item of Array.isArray(plan.schedule) ? plan.schedule : []) {
@@ -674,39 +714,24 @@ async function applyWeekPlan(ctx, input) {
       summary.scheduleAdded += 1
     }
     if (plan.duty !== null && typeof plan.duty === 'object') {
+      if (plan.duty.days !== undefined) {
+        throw new DataError('值日已改为整周轮换，plan.duty.days 不再支持')
+      }
       if (plan.duty.groupName !== undefined) {
-        if (plan.duty.groupName === '') delete week.duty.groupId
-        else {
+        if (plan.duty.groupName === '') {
+          delete week.duty.groupId
+          summary.dutyGroup = ''
+        } else {
           const group = findGroup(board, plan.duty.groupName)
           if (group === null) throw new DataError(`找不到值日组「${clip(plan.duty.groupName, 40)}」`)
           week.duty.groupId = group.id
+          summary.dutyGroup = group.name
         }
       }
       if (plan.duty.note !== undefined) {
         const note = clip(plan.duty.note, LIMITS.maxNote)
         if (note === '') delete week.duty.note
         else week.duty.note = note
-      }
-      if (plan.duty.days !== null && typeof plan.duty.days === 'object') {
-        for (const [key, value] of Object.entries(plan.duty.days)) {
-          const weekday = Number(key)
-          if (!Number.isInteger(weekday) || weekday < 1 || weekday > 7) {
-            throw new DataError(`值日 days 的键必须是 1–7，收到：${key}`)
-          }
-          if (value === null || typeof value !== 'object') {
-            delete week.duty.days[String(weekday)]
-            continue
-          }
-          const names = splitNames(value.names)
-          const area = clip(value.area, LIMITS.maxArea)
-          const note = clip(value.note, LIMITS.maxNote)
-          if (names.length === 0 && area === '' && note === '') {
-            delete week.duty.days[String(weekday)]
-          } else {
-            week.duty.days[String(weekday)] = { names, area, note }
-            summary.dutyDays += 1
-          }
-        }
       }
     }
     if (typeof plan.announcement === 'string') {
@@ -727,22 +752,24 @@ async function clearScope(ctx, scope, weekOffsetInput) {
   return updateBoard(ctx, async (board) => {
     const weekCtx = resolveWeekContext(weekOffset, settings, board)
     const week = ensureWeek(board, weekCtx.key)
+    const today = todayKey()
     const removed = { tasks: 0, schedule: 0, duty: 0 }
     if (scope === 'tasks' || scope === 'all') {
-      removed.tasks = week.tasks.length
-      week.tasks = []
+      const before = week.tasks.length
+      week.tasks = week.tasks.filter((task) => task.date !== today)
+      removed.tasks = before - week.tasks.length
     }
     if (scope === 'schedule' || scope === 'all') {
       removed.schedule = week.schedule.length
       week.schedule = []
     }
     if (scope === 'duty' || scope === 'all') {
-      removed.duty = Object.keys(week.duty.days).length + (week.duty.groupId !== undefined ? 1 : 0)
-      week.duty = { days: {} }
+      removed.duty =
+        (week.duty.groupId !== undefined ? 1 : 0) + (week.duty.note !== undefined ? 1 : 0)
+      week.duty = {}
     }
     if (scope === 'all') {
       week.announcement = ''
-      week.duty = { days: {} }
     }
     touch(week)
     return { weekCtx, removed }
@@ -765,8 +792,8 @@ async function loadDemo(ctx) {
       week.tasks.length > 0 ||
       week.schedule.length > 0 ||
       week.announcement !== '' ||
-      Object.keys(week.duty.days).length > 0 ||
-      week.duty.groupId !== undefined
+      week.duty.groupId !== undefined ||
+      week.duty.note !== undefined
     if (hasData) {
       throw new DataError('本周已经有数据了。先到「设置 → 清理」清空本周，再写入示例。')
     }
@@ -779,11 +806,13 @@ async function loadDemo(ctx) {
       board.duty.order = board.duty.groups.map((group) => group.id)
     }
     const day = (offset) => dateKeyOf(addDays(new Date(nowMs()), offset))
+    const today = todayKey()
     week.tasks = [
       {
         id: makeId('t', []),
         text: '收数学作业',
         done: false,
+        date: today,
         priority: 'high',
         category: '作业',
         dueDate: day(1),
@@ -795,6 +824,7 @@ async function loadDemo(ctx) {
         id: makeId('t', []),
         text: '物理实验报告',
         done: false,
+        date: today,
         priority: 'normal',
         category: '作业',
         dueDate: day(2),
@@ -806,6 +836,7 @@ async function loadDemo(ctx) {
         id: makeId('t', []),
         text: '班会主题征集',
         done: false,
+        date: today,
         priority: 'low',
         category: '活动',
         dueDate: day(1),
@@ -817,6 +848,7 @@ async function loadDemo(ctx) {
         id: makeId('t', []),
         text: '校运会报名表',
         done: false,
+        date: today,
         priority: 'normal',
         category: '通知',
         dueDate: day(3),
@@ -830,17 +862,22 @@ async function loadDemo(ctx) {
       { id: makeId('s', []), weekday: 3, time: '16:00', title: '班会', place: '教室', note: '', createdAt: new Date(nowMs()).toISOString() },
       { id: makeId('s', []), weekday: 5, time: '15:30', title: '大扫除', place: '教室', note: '带清洁工具', createdAt: new Date(nowMs()).toISOString() },
     ]
-    week.duty.days = {
-      '5': { names: ['张三', '李四'], area: '教室', note: '大扫除' },
-    }
+    week.duty = { note: '本周五放学后大扫除' }
     week.announcement = '本周五下午大扫除，请各组带好清洁工具。'
     touch(week)
     return { weekCtx }
   })
 }
 
+/** 跨天/启动时清理过期历史事务；写操作内部也会自动清理一次。 */
+async function purgeTaskHistory(ctx) {
+  return purgeStoredTaskHistory(ctx)
+}
+
 module.exports = {
   readWeekOffset,
+  readTaskDate,
+  readHistoryDate,
   loadWeek,
   loadUi,
   saveUi,
@@ -854,18 +891,15 @@ module.exports = {
   taskCounts,
   completionPercent,
   findGroup,
+  findTaskById,
   matchTask,
   addTask,
   updateTask,
   completeTask,
   deleteTask,
   listTasks,
-  clearDone,
-  setDutyDay,
   setDutyWeek,
   setDutyGroups,
-  setDutyPlan,
-  resetDutyPlan,
   addSchedule,
   updateSchedule,
   deleteSchedule,
@@ -874,4 +908,5 @@ module.exports = {
   clearScope,
   loadDemo,
   seedGroups,
+  purgeTaskHistory,
 }

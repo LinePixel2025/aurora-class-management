@@ -72,6 +72,25 @@ function todayKey() {
   return dateKeyOf(startOfDay(new Date(nowMs())))
 }
 
+/** `2026-10-24` → `10/24 周五`；非法日期返回 ''。 */
+function dateLabel(value) {
+  const date = parseDateKey(value)
+  if (date === null) return ''
+  return `${shortDate(date)} ${weekdayLabel(weekdayIndex(date))}`
+}
+
+function todayLabel() {
+  return dateLabel(todayKey())
+}
+
+/** 某个周上下文里周几对应的日期键；非法 weekday 返回 ''。 */
+function dateKeyOfWeekday(weekCtx, weekday) {
+  const index = Number(weekday)
+  if (!Number.isInteger(index) || index < 1 || index > 7) return ''
+  if (weekCtx === null || typeof weekCtx !== 'object' || !(weekCtx.monday instanceof Date)) return ''
+  return dateKeyOf(addDays(weekCtx.monday, index - 1))
+}
+
 function currentWeekKey() {
   return dateKeyOf(currentMonday())
 }
@@ -204,6 +223,9 @@ module.exports = {
   currentMonday,
   currentWeekKey,
   todayKey,
+  dateLabel,
+  todayLabel,
+  dateKeyOfWeekday,
   weekKeyFromOffset,
   weekRangeOf,
   weekdayIndex,

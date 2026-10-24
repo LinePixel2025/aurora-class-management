@@ -3,9 +3,10 @@
 /**
  * 插件数据层。
  *
- * - `board.v1`：业务数据（值日分组/轮换、每周事务/值日覆盖/安排/通知）
+ * - `board.v1`：业务数据（值日分组/轮换、每周安排/通知、按天事务）
  * - `ui.v1`：界面状态（当前面板视图、周偏移），与业务数据分开保存
  *
+ * 事务按天存放（`task.date`），界面只显示今天；旧事务保留 7 天供查询，之后自动清理。
  * 所有写入都经过净化、容量守卫与串行队列；单个存储值上限 256 KB，这里自留 240 KB 余量。
  */
 
@@ -22,6 +23,9 @@ const {
   normalizeOffset,
   normalizeTime,
   parseDateKey,
+  todayKey,
+  addDays,
+  dateKeyOf,
 } = require('./time')
 
 function isoNowLocal() {
@@ -30,8 +34,10 @@ function isoNowLocal() {
 
 const BOARD_KEY = 'board.v1'
 const UI_KEY = 'ui.v1'
+const BOARD_VERSION = 2
+const HISTORY_DAYS = 7
 const MAX_BOARD_BYTES = 240 * 1024
-const VIEWS = ['board', 'duty', 'schedule', 'notice', 'settings']
+const VIEWS = ['board', 'duty', 'schedule', 'settings']
 
 const LIMITS = {
   maxWeeks: 40,
@@ -65,7 +71,7 @@ function seedGroups() {
 
 function emptyWeek() {
   return {
-    duty: { days: {} },
+    duty: {},
     tasks: [],
     schedule: [],
     announcement: '',
@@ -75,21 +81,24 @@ function emptyWeek() {
 
 function createBoard() {
   return {
-    version: 1,
+    version: BOARD_VERSION,
     anchorMonday: currentWeekKey(),
     duty: { groups: seedGroups(), order: ['g1', 'g2', 'g3', 'g4'] },
     weeks: {},
   }
 }
 
-function sanitizeTask(raw) {
+function sanitizeTask(raw, fallbackDate) {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null
   const text = clip(raw.text, LIMITS.maxTaskText)
   if (text === '') return null
+  const fallback =
+    typeof fallbackDate === 'string' && parseDateKey(fallbackDate) !== null ? fallbackDate : todayKey()
   const task = {
     id: /^[A-Za-z0-9_-]{1,40}$/.test(String(raw.id)) ? String(raw.id) : makeId('t', []),
     text,
     done: raw.done === true,
+    date: parseDateKey(raw.date) === null ? fallback : String(raw.date).trim(),
     priority: normalizePriority(raw.priority),
     category: clip(raw.category, LIMITS.maxCategory) || '事务',
     dueDate: parseDateKey(raw.dueDate) === null ? '' : String(raw.dueDate).trim(),
@@ -147,26 +156,19 @@ function sanitizeDutyGroups(rawGroups) {
   return groups
 }
 
-function sanitizeWeek(raw) {
+function sanitizeWeek(raw, weekKey) {
   const source = raw !== null && typeof raw === 'object' ? raw : {}
-  const dutyRaw = source.duty !== null && typeof source.duty === 'object' ? source.duty : {}
-  const days = {}
-  if (dutyRaw.days !== null && typeof dutyRaw.days === 'object') {
-    for (let weekday = 1; weekday <= 7; weekday += 1) {
-      const value = dutyRaw.days[String(weekday)]
-      if (value === null || typeof value !== 'object') continue
-      const names = splitNames(value.names)
-      const area = clip(value.area, LIMITS.maxArea)
-      const note = clip(value.note, LIMITS.maxNote)
-      if (names.length === 0 && area === '' && note === '') continue
-      days[String(weekday)] = { names, area, note }
-    }
-  }
+  const fallbackDate =
+    weekKey === currentWeekKey()
+      ? todayKey()
+      : typeof weekKey === 'string' && parseDateKey(weekKey) !== null
+        ? weekKey
+        : todayKey()
 
   const tasks = []
   const taskIds = new Set()
   for (const item of Array.isArray(source.tasks) ? source.tasks : []) {
-    const task = sanitizeTask(item)
+    const task = sanitizeTask(item, fallbackDate)
     if (task === null) continue
     while (taskIds.has(task.id)) task.id = makeId('t', [...taskIds])
     taskIds.add(task.id)
@@ -185,8 +187,9 @@ function sanitizeWeek(raw) {
     if (schedule.length >= LIMITS.maxSchedulePerWeek) break
   }
 
+  const dutyRaw = source.duty !== null && typeof source.duty === 'object' ? source.duty : {}
   const week = {
-    duty: { days },
+    duty: {},
     tasks,
     schedule,
     announcement: clipMultiline(source.announcement, LIMITS.maxAnnouncement),
@@ -210,7 +213,7 @@ function sanitizeBoard(raw) {
     return { board: createBoard(), changed: true }
   }
   const board = {
-    version: 1,
+    version: BOARD_VERSION,
     anchorMonday:
       parseDateKey(source.anchorMonday) === null ? currentWeekKey() : String(source.anchorMonday).trim(),
     duty: { groups: [], order: [] },
@@ -232,7 +235,7 @@ function sanitizeBoard(raw) {
   for (const [key, value] of Object.entries(weeksRaw)) {
     if (parseDateKey(key) === null) continue
     if (value === null || typeof value !== 'object') continue
-    board.weeks[key] = sanitizeWeek(value)
+    board.weeks[key] = sanitizeWeek(value, key)
   }
 
   const changed = JSON.stringify(board) !== JSON.stringify(source)
@@ -249,6 +252,25 @@ function readSettings(config) {
     termStartDate,
     showCompleted: source.showCompleted === true,
   }
+}
+
+/** 历史事务保留窗口：今天 + 前 (HISTORY_DAYS - 1) 天。 */
+function historyCutoff(today) {
+  const date = parseDateKey(today)
+  if (date === null) return dateKeyOf(addDays(new Date(), -(HISTORY_DAYS - 1)))
+  return dateKeyOf(addDays(date, -(HISTORY_DAYS - 1)))
+}
+
+/** 删除早于保留窗口的事务；返回删除数量与截止日。 */
+function purgeTaskHistory(board, today) {
+  const cutoff = historyCutoff(today)
+  let removed = 0
+  for (const week of Object.values(board.weeks)) {
+    const before = week.tasks.length
+    week.tasks = week.tasks.filter((task) => task.date >= cutoff)
+    removed += before - week.tasks.length
+  }
+  return { removed, cutoff }
 }
 
 function pruneWeeks(board) {
@@ -287,16 +309,30 @@ async function readBoard(ctx) {
   return board
 }
 
-/** 启动时在串行队列里补种子 / 修复坏数据。 */
+/** 启动时在串行队列里补种子 / 修复坏数据 / 清理过期事务。 */
 async function ensureBoard(ctx) {
   return exclusive(async () => {
     const raw = await ctx.storage.get(BOARD_KEY)
     const { board, changed } = sanitizeBoard(raw)
-    if (raw === undefined || raw === null || changed) {
-      if (raw !== undefined && raw !== null) ctx.log('warn', '班级事务数据已自动修复', {})
+    const { removed } = purgeTaskHistory(board, todayKey())
+    if (raw === undefined || raw === null || changed || removed > 0) {
+      if (raw !== undefined && raw !== null) {
+        ctx.log('warn', '班级事务数据已自动修复/迁移', { changed, removed })
+      }
       await writeBoard(ctx, board)
     }
     return board
+  })
+}
+
+/** 供跨天 tick / 启动时单独清理历史事务（不触碰业务变更）。 */
+async function purgeStoredTaskHistory(ctx) {
+  return exclusive(async () => {
+    const raw = await ctx.storage.get(BOARD_KEY)
+    const { board } = sanitizeBoard(raw)
+    const result = purgeTaskHistory(board, todayKey())
+    if (result.removed > 0) await writeBoard(ctx, board)
+    return result
   })
 }
 
@@ -315,6 +351,11 @@ function sanitizeUi(raw) {
     formRev,
     // 浮窗「快速添加」输入框的版本号
     quickRev,
+    // 管理台当前展开编辑的事务（空字符串表示未选中）
+    editingTaskId:
+      typeof source.editingTaskId === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(source.editingTaskId)
+        ? source.editingTaskId
+        : '',
   }
 }
 
@@ -344,6 +385,7 @@ function exclusive(task) {
 async function updateBoard(ctx, mutate) {
   return exclusive(async () => {
     const board = await readBoard(ctx)
+    purgeTaskHistory(board, todayKey())
     const result = await mutate(board)
     await writeBoard(ctx, board)
     return result
@@ -391,6 +433,8 @@ function boardStats(board) {
 module.exports = {
   BOARD_KEY,
   UI_KEY,
+  BOARD_VERSION,
+  HISTORY_DAYS,
   VIEWS,
   LIMITS,
   MAX_BOARD_BYTES,
@@ -414,4 +458,7 @@ module.exports = {
   ensureWeek,
   boardStats,
   pruneToFit,
+  historyCutoff,
+  purgeTaskHistory,
+  purgeStoredTaskHistory,
 }

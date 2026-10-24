@@ -1,11 +1,13 @@
 {
   "id": "com.classmanagement.board",
   "name": "班级事务台",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "apiVersion": 1,
   "minAuroraVersion": "0.5.1",
-  "description": "桌面置顶浮窗显示本周值日、本周事务、本周安排与班级速览，并提供右栏管理台与一整套 Agent 工具。",
-  "author": { "name": "LinePixel2025" },
+  "description": "2 张桌面浮窗显示班级速览/本周值日与今日事务/本周安排，并提供 4 视图管理台与一整套 Agent 工具。",
+  "author": {
+    "name": "LinePixel2025"
+  },
   "license": "MIT",
   "homepage": "https://github.com/LinePixel2025/aurora-class-management",
   "main": "main.js",
@@ -24,7 +26,7 @@
     "tools": [
       {
         "name": "get_overview",
-        "description": "读取某个周（默认本周）的班级事务总览：班级信息、第几周与日期范围、值日安排、事务清单（含 id）、本周安排与通知。",
+        "description": "读取某一天及所在周的班级总览：班级信息、周次、值日组与成员、该日事务（含 id）、本周安排与通知。默认今天；给 weekOffset 时事务默认该周周一。",
         "parameters": {
           "type": "object",
           "properties": {
@@ -37,6 +39,10 @@
             "includeDone": {
               "type": "boolean",
               "description": "是否在事务清单中包含已完成项，默认 true"
+            },
+            "date": {
+              "type": "string",
+              "description": "事务日期 YYYY-MM-DD，默认今天；可查最近 7 天历史或未来 ±12 周"
             }
           }
         },
@@ -46,19 +52,17 @@
       },
       {
         "name": "list_tasks",
-        "description": "列出某个周的事务，返回每条事务的 id、内容、完成状态、截止日期/时间、优先级、分类与负责人。",
+        "description": "列出某一天的事务，默认今天；返回每条事务的 id、内容、完成状态、截止日期/时间、优先级、分类与负责人。",
         "parameters": {
           "type": "object",
           "properties": {
-            "weekOffset": {
-              "type": "integer",
-              "minimum": -12,
-              "maximum": 12,
-              "description": "相对本周的周偏移，默认 0"
-            },
             "status": {
               "type": "string",
-              "enum": ["pending", "done", "all"],
+              "enum": [
+                "pending",
+                "done",
+                "all"
+              ],
               "description": "筛选状态，默认 pending"
             },
             "category": {
@@ -70,6 +74,10 @@
               "minimum": 1,
               "maximum": 60,
               "description": "最多返回多少条，默认 30"
+            },
+            "date": {
+              "type": "string",
+              "description": "事务日期 YYYY-MM-DD，默认今天；可查最近 7 天历史或未来 ±12 周"
             }
           }
         },
@@ -79,31 +87,47 @@
       },
       {
         "name": "add_task",
-        "description": "给某个周添加一条班级事务（作业/活动/通知等）。写入后桌面浮窗与面板会即时刷新。",
+        "description": "给某一天添加一条班级事务（默认今天）；写入后桌面浮窗与面板会即时刷新。事务按天管理，不能早于今天。",
         "parameters": {
           "type": "object",
           "properties": {
-            "text": { "type": "string", "description": "事务内容，例如：收物理作业" },
-            "weekOffset": {
-              "type": "integer",
-              "minimum": -12,
-              "maximum": 12,
-              "description": "放到哪一周，默认 0（本周）；给了 dueDate 且没给 weekOffset 时按截止日期所在周归档"
+            "text": {
+              "type": "string",
+              "description": "事务内容，例如：收物理作业"
             },
-            "dueDate": { "type": "string", "description": "截止日期，格式 YYYY-MM-DD（可选）" },
-            "dueTime": { "type": "string", "description": "截止时间，格式 HH:mm（可选）" },
+            "dueDate": {
+              "type": "string",
+              "description": "截止日期，格式 YYYY-MM-DD（可选）"
+            },
+            "dueTime": {
+              "type": "string",
+              "description": "截止时间，格式 HH:mm（可选）"
+            },
             "priority": {
               "type": "string",
-              "enum": ["high", "normal", "low"],
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ],
               "description": "优先级，默认 normal"
             },
             "category": {
               "type": "string",
               "description": "分类，例如：作业 / 活动 / 通知 / 事务 / 其他，默认「事务」"
             },
-            "assignee": { "type": "string", "description": "负责人（可选）" }
+            "assignee": {
+              "type": "string",
+              "description": "负责人（可选）"
+            },
+            "date": {
+              "type": "string",
+              "description": "事务所属日期 YYYY-MM-DD，默认今天；不能早于今天，最远 +12 周"
+            }
           },
-          "required": ["text"]
+          "required": [
+            "text"
+          ]
         },
         "sensitivity": "confirm",
         "readonly": false,
@@ -115,22 +139,45 @@
         "parameters": {
           "type": "object",
           "properties": {
-            "id": { "type": "string", "description": "事务 id（由 get_overview / list_tasks 返回）" },
-            "weekOffset": {
-              "type": "integer",
-              "minimum": -12,
-              "maximum": 12,
-              "description": "事务所在周，默认 0"
+            "id": {
+              "type": "string",
+              "description": "事务 id（由 get_overview / list_tasks 返回）"
             },
-            "text": { "type": "string", "description": "新内容" },
-            "dueDate": { "type": "string", "description": "新截止日期 YYYY-MM-DD，空字符串表示清除" },
-            "dueTime": { "type": "string", "description": "新截止时间 HH:mm，空字符串表示清除" },
-            "priority": { "type": "string", "enum": ["high", "normal", "low"] },
-            "category": { "type": "string" },
-            "assignee": { "type": "string", "description": "负责人，空字符串表示清除" },
-            "done": { "type": "boolean", "description": "完成状态" }
+            "text": {
+              "type": "string",
+              "description": "新内容"
+            },
+            "dueDate": {
+              "type": "string",
+              "description": "新截止日期 YYYY-MM-DD，空字符串表示清除"
+            },
+            "dueTime": {
+              "type": "string",
+              "description": "新截止时间 HH:mm，空字符串表示清除"
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "category": {
+              "type": "string"
+            },
+            "assignee": {
+              "type": "string",
+              "description": "负责人，空字符串表示清除"
+            },
+            "done": {
+              "type": "boolean",
+              "description": "完成状态"
+            }
           },
-          "required": ["id"]
+          "required": [
+            "id"
+          ]
         },
         "sensitivity": "confirm",
         "readonly": false,
@@ -138,19 +185,26 @@
       },
       {
         "name": "complete_task",
-        "description": "把一条事务标记完成或撤销完成。优先用 id；也可以给 text，但文本必须在本周唯一命中。",
+        "description": "把一条事务标记完成或撤销完成。优先用 id；也可以给 text + date（默认今天），文本必须当天唯一命中。",
         "parameters": {
           "type": "object",
           "properties": {
-            "id": { "type": "string", "description": "事务 id（可选）" },
-            "text": { "type": "string", "description": "事务内容片段，必须唯一命中（可选）" },
-            "weekOffset": {
-              "type": "integer",
-              "minimum": -12,
-              "maximum": 12,
-              "description": "事务所在周，默认 0"
+            "id": {
+              "type": "string",
+              "description": "事务 id（可选）"
             },
-            "done": { "type": "boolean", "description": "true=完成，false=撤销完成，默认 true" }
+            "text": {
+              "type": "string",
+              "description": "事务内容片段，必须唯一命中（可选）"
+            },
+            "done": {
+              "type": "boolean",
+              "description": "true=完成，false=撤销完成，默认 true"
+            },
+            "date": {
+              "type": "string",
+              "description": "文本匹配所在日期 YYYY-MM-DD，默认今天；可查最近 7 天历史"
+            }
           }
         },
         "sensitivity": "confirm",
@@ -159,17 +213,21 @@
       },
       {
         "name": "delete_task",
-        "description": "删除一条事务。优先用 id；也可以给 text，但文本必须在本周唯一命中。",
+        "description": "删除一条事务。优先用 id；也可以给 text + date（默认今天），文本必须当天唯一命中。",
         "parameters": {
           "type": "object",
           "properties": {
-            "id": { "type": "string", "description": "事务 id（可选）" },
-            "text": { "type": "string", "description": "事务内容片段，必须唯一命中（可选）" },
-            "weekOffset": {
-              "type": "integer",
-              "minimum": -12,
-              "maximum": 12,
-              "description": "事务所在周，默认 0"
+            "id": {
+              "type": "string",
+              "description": "事务 id（可选）"
+            },
+            "text": {
+              "type": "string",
+              "description": "事务内容片段，必须唯一命中（可选）"
+            },
+            "date": {
+              "type": "string",
+              "description": "文本匹配所在日期 YYYY-MM-DD，默认今天；可查最近 7 天历史"
             }
           }
         },
@@ -178,41 +236,8 @@
         "timeoutMs": 30000
       },
       {
-        "name": "set_duty_day",
-        "description": "设置某个周某一天的值日：名单、区域、备注；clear=true 时清除该天覆盖、沿用值日组。",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "weekday": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 7,
-              "description": "周几：1=周一 … 7=周日"
-            },
-            "names": {
-              "type": "array",
-              "items": { "type": "string" },
-              "description": "值日同学姓名列表；空数组表示沿用值日组"
-            },
-            "area": { "type": "string", "description": "值日区域，例如：教室 / 走廊" },
-            "note": { "type": "string", "description": "备注，例如：大扫除" },
-            "weekOffset": {
-              "type": "integer",
-              "minimum": -12,
-              "maximum": 12,
-              "description": "相对本周的周偏移，默认 0"
-            },
-            "clear": { "type": "boolean", "description": "清除该天覆盖，默认 false" }
-          },
-          "required": ["weekday"]
-        },
-        "sensitivity": "confirm",
-        "readonly": false,
-        "timeoutMs": 30000
-      },
-      {
         "name": "set_duty_week",
-        "description": "设置某个周由哪个值日组轮值，并写入本周值日备注；groupName 传空字符串或 clear=true 可恢复自动轮换。",
+        "description": "设置某个周由哪个值日组负责（整周一组），并写入本周值日备注；groupName 传空字符串或 clear=true 可恢复自动轮换。",
         "parameters": {
           "type": "object",
           "properties": {
@@ -222,9 +247,18 @@
               "maximum": 12,
               "description": "相对本周的周偏移，默认 0"
             },
-            "groupName": { "type": "string", "description": "值日组名称或 id，例如：第2组" },
-            "note": { "type": "string", "description": "本周值日备注" },
-            "clear": { "type": "boolean", "description": "清除本周指定组，恢复自动轮换" }
+            "groupName": {
+              "type": "string",
+              "description": "值日组名称或 id，例如：第2组"
+            },
+            "note": {
+              "type": "string",
+              "description": "本周值日备注"
+            },
+            "clear": {
+              "type": "boolean",
+              "description": "清除本周指定组，恢复自动轮换"
+            }
           }
         },
         "sensitivity": "confirm",
@@ -233,7 +267,7 @@
       },
       {
         "name": "set_duty_groups",
-        "description": "设置值日分组与轮换顺序。groups 每项包含组名与成员；order 是按周轮换的组名顺序（可省略，默认按 groups 顺序）。",
+        "description": "设置值日分组与按周轮换顺序。groups 每项包含组名与成员；order 是按周轮换的组名顺序（可省略，默认按 groups 顺序）。",
         "parameters": {
           "type": "object",
           "properties": {
@@ -242,24 +276,36 @@
               "items": {
                 "type": "object",
                 "properties": {
-                  "name": { "type": "string", "description": "组名，例如：第1组" },
+                  "name": {
+                    "type": "string",
+                    "description": "组名，例如：第1组"
+                  },
                   "members": {
                     "type": "array",
-                    "items": { "type": "string" },
+                    "items": {
+                      "type": "string"
+                    },
                     "description": "成员姓名列表"
                   }
                 },
-                "required": ["name", "members"]
+                "required": [
+                  "name",
+                  "members"
+                ]
               },
               "description": "1–8 个值日组"
             },
             "order": {
               "type": "array",
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "description": "按周轮换的组名顺序，例如 [\"第1组\",\"第2组\",\"第3组\",\"第4组\"]"
             }
           },
-          "required": ["groups"]
+          "required": [
+            "groups"
+          ]
         },
         "sensitivity": "confirm",
         "readonly": false,
@@ -277,18 +323,33 @@
               "maximum": 7,
               "description": "周几：1=周一 … 7=周日"
             },
-            "title": { "type": "string", "description": "事项，例如：班会" },
+            "title": {
+              "type": "string",
+              "description": "事项，例如：班会"
+            },
             "weekOffset": {
               "type": "integer",
               "minimum": -12,
               "maximum": 12,
               "description": "相对本周的周偏移，默认 0"
             },
-            "time": { "type": "string", "description": "时间 HH:mm（可选）" },
-            "place": { "type": "string", "description": "地点（可选）" },
-            "note": { "type": "string", "description": "备注（可选）" }
+            "time": {
+              "type": "string",
+              "description": "时间 HH:mm（可选）"
+            },
+            "place": {
+              "type": "string",
+              "description": "地点（可选）"
+            },
+            "note": {
+              "type": "string",
+              "description": "备注（可选）"
+            }
           },
-          "required": ["weekday", "title"]
+          "required": [
+            "weekday",
+            "title"
+          ]
         },
         "sensitivity": "confirm",
         "readonly": false,
@@ -306,14 +367,20 @@
               "maximum": 12,
               "description": "相对本周的周偏移，默认 0"
             },
-            "id": { "type": "string", "description": "安排 id（可选）" },
+            "id": {
+              "type": "string",
+              "description": "安排 id（可选）"
+            },
             "weekday": {
               "type": "integer",
               "minimum": 1,
               "maximum": 7,
               "description": "周几（与 title 配合使用）"
             },
-            "title": { "type": "string", "description": "事项名称（与 weekday 配合使用）" }
+            "title": {
+              "type": "string",
+              "description": "事项名称（与 weekday 配合使用）"
+            }
           }
         },
         "sensitivity": "confirm",
@@ -326,7 +393,10 @@
         "parameters": {
           "type": "object",
           "properties": {
-            "text": { "type": "string", "description": "通知内容，最多 600 字" },
+            "text": {
+              "type": "string",
+              "description": "通知内容，最多 600 字"
+            },
             "weekOffset": {
               "type": "integer",
               "minimum": -12,
@@ -334,7 +404,9 @@
               "description": "相对本周的周偏移，默认 0"
             }
           },
-          "required": ["text"]
+          "required": [
+            "text"
+          ]
         },
         "sensitivity": "confirm",
         "readonly": false,
@@ -342,7 +414,7 @@
       },
       {
         "name": "apply_week_plan",
-        "description": "一次写入整周计划：tasks 事务数组、schedule 安排数组、duty 值日（days 按周几、groupName、note）、announcement 通知。原子写入，只推送一次刷新；replaceTasks/replaceSchedule=true 时先清空再写入。",
+        "description": "一次写入整周计划：tasks（按 date 落到目标周某天）、schedule、duty（groupName/note，整周一组）、announcement。原子写入，只推送一次刷新；replaceTasks/replaceSchedule=true 时先清空目标周数据。",
         "parameters": {
           "type": "object",
           "properties": {
@@ -361,14 +433,39 @@
                   "items": {
                     "type": "object",
                     "properties": {
-                      "text": { "type": "string" },
-                      "dueDate": { "type": "string", "description": "YYYY-MM-DD" },
-                      "dueTime": { "type": "string", "description": "HH:mm" },
-                      "priority": { "type": "string", "enum": ["high", "normal", "low"] },
-                      "category": { "type": "string" },
-                      "assignee": { "type": "string" }
+                      "text": {
+                        "type": "string"
+                      },
+                      "dueDate": {
+                        "type": "string",
+                        "description": "YYYY-MM-DD"
+                      },
+                      "dueTime": {
+                        "type": "string",
+                        "description": "HH:mm"
+                      },
+                      "priority": {
+                        "type": "string",
+                        "enum": [
+                          "high",
+                          "normal",
+                          "low"
+                        ]
+                      },
+                      "category": {
+                        "type": "string"
+                      },
+                      "assignee": {
+                        "type": "string"
+                      },
+                      "date": {
+                        "type": "string",
+                        "description": "任务日期 YYYY-MM-DD，必须在目标周内；默认本周为今天、其他周为该周周一"
+                      }
                     },
-                    "required": ["text"]
+                    "required": [
+                      "text"
+                    ]
                   }
                 },
                 "schedule": {
@@ -376,51 +473,81 @@
                   "items": {
                     "type": "object",
                     "properties": {
-                      "weekday": { "type": "integer", "minimum": 1, "maximum": 7 },
-                      "time": { "type": "string" },
-                      "title": { "type": "string" },
-                      "place": { "type": "string" },
-                      "note": { "type": "string" }
+                      "weekday": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 7
+                      },
+                      "time": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "place": {
+                        "type": "string"
+                      },
+                      "note": {
+                        "type": "string"
+                      }
                     },
-                    "required": ["weekday", "title"]
+                    "required": [
+                      "weekday",
+                      "title"
+                    ]
                   }
                 },
                 "duty": {
                   "type": "object",
                   "properties": {
-                    "days": {
-                      "type": "object",
-                      "description": "键为周几（1–7），值为 { names: string[], area?, note? }；names 为空数组表示沿用值日组"
+                    "groupName": {
+                      "type": "string",
+                      "description": "本周轮换组名"
                     },
-                    "groupName": { "type": "string", "description": "本周轮换组名" },
-                    "note": { "type": "string", "description": "本周值日备注" }
+                    "note": {
+                      "type": "string",
+                      "description": "本周值日备注"
+                    }
                   }
                 },
-                "announcement": { "type": "string", "description": "班级通知，空字符串清除" },
-                "replaceTasks": { "type": "boolean", "description": "先清空本周事务再写入" },
-                "replaceSchedule": { "type": "boolean", "description": "先清空本周安排再写入" }
+                "announcement": {
+                  "type": "string",
+                  "description": "班级通知，空字符串清除"
+                },
+                "replaceTasks": {
+                  "type": "boolean",
+                  "description": "先清空目标周全部事务再写入"
+                },
+                "replaceSchedule": {
+                  "type": "boolean",
+                  "description": "先清空本周安排再写入"
+                }
               }
             }
           },
-          "required": ["plan"]
+          "required": [
+            "plan"
+          ]
         },
         "sensitivity": "confirm",
         "readonly": false,
         "timeoutMs": 60000
       }
     ],
-    "skills": ["skills/class-board"],
+    "skills": [
+      "skills/class-board"
+    ],
     "commands": [
       {
         "name": "class",
         "title": "打开班级事务台",
-        "description": "在右栏打开班级事务台，查看本周值日、事务、安排与通知",
+        "description": "在右栏打开班级事务台，查看今日事务、本周值日、安排与通知",
         "mode": "action"
       },
       {
         "name": "week-plan",
-        "title": "总结本周班级计划",
-        "description": "让 Agent 读取本周数据并用三条要点总结今天要做什么",
+        "title": "总结今日班级计划",
+        "description": "让 Agent 读取今日数据并用三条要点总结今天要做什么",
         "mode": "prompt"
       }
     ],
@@ -434,36 +561,26 @@
     ],
     "widgets": [
       {
-        "id": "duty-week",
-        "title": "本周值日",
-        "icon": "CalendarClock",
-        "slot": "desktop",
-        "schema": "ui/widget-duty.json",
-        "defaultSize": { "width": 320, "height": 340 }
-      },
-      {
-        "id": "week-tasks",
-        "title": "本周事务",
-        "icon": "ListChecks",
-        "slot": "desktop",
-        "schema": "ui/widget-tasks.json",
-        "defaultSize": { "width": 360, "height": 420 }
-      },
-      {
-        "id": "week-schedule",
-        "title": "本周安排",
-        "icon": "Clock",
-        "slot": "desktop",
-        "schema": "ui/widget-schedule.json",
-        "defaultSize": { "width": 320, "height": 300 }
-      },
-      {
         "id": "week-overview",
         "title": "班级速览",
         "icon": "Gauge",
         "slot": "desktop",
         "schema": "ui/widget-overview.json",
-        "defaultSize": { "width": 300, "height": 320 }
+        "defaultSize": {
+          "width": 320,
+          "height": 300
+        }
+      },
+      {
+        "id": "week-tasks",
+        "title": "今日事务",
+        "icon": "ListChecks",
+        "slot": "desktop",
+        "schema": "ui/widget-tasks.json",
+        "defaultSize": {
+          "width": 360,
+          "height": 460
+        }
       }
     ]
   },
@@ -496,7 +613,7 @@
         "key": "showCompleted",
         "label": "浮窗显示已完成事务",
         "type": "boolean",
-        "description": "打开后「本周事务」浮窗会同时显示已完成项",
+        "description": "打开后「今日事务」浮窗会同时显示今天已完成的事务",
         "default": false
       }
     ]

@@ -9,7 +9,7 @@
 
 const { clip } = require('./lib/util')
 const { nowMs, setNowForTests, resetNowForTests, todayKey, weekKeyFromOffset, weekdayLabel } = require('./lib/time')
-const { VIEWS, DataError, ensureBoard } = require('./lib/state')
+const { DataError, ensureBoard } = require('./lib/state')
 const ops = require('./lib/ops')
 const { overViewText, taskListText, planSummaryText } = require('./lib/text')
 const { pushAll, pushPanel } = require('./lib/push')
@@ -47,13 +47,15 @@ function extractParams(params) {
 }
 
 async function runTool(name, input, ctx) {
-  const settings = ops.readWeekOffset(input.weekOffset, 0)
-
   if (name === 'get_overview') {
-    const data = await ops.loadWeek(ctx, settings)
+    const weekOffset = ops.readWeekOffset(input.weekOffset, 0)
+    const data = await ops.loadWeek(ctx, {
+      weekOffset,
+      ...(typeof input.date === 'string' && input.date.trim() !== '' ? { date: input.date.trim() } : {}),
+    })
     return ok(
       overViewText(data, { includeDone: input.includeDone !== false }),
-      `${data.weekCtx.label}：待办 ${data.counts.pending} 条，值日 ${data.duty.groupName}`,
+      `${data.taskDateLabel}：待办 ${data.counts.pending} 条，值日 ${data.duty.groupName}`,
     )
   }
 
@@ -61,7 +63,7 @@ async function runTool(name, input, ctx) {
     const result = await ops.listTasks(ctx, input)
     return ok(
       taskListText(result.data, result.tasks, result.total, result.status),
-      `${result.total} 条事务（${result.status}）`,
+      `${result.date}：${result.total} 条事务（${result.status}）`,
     )
   }
 
@@ -69,7 +71,7 @@ async function runTool(name, input, ctx) {
     const result = await ops.addTask(ctx, input)
     await pushAll(ctx, 'tool-add-task')
     return ok(
-      `已添加事务：${result.task.text}（${result.weekCtx.label}）\nid=${result.task.id}${
+      `已添加事务：${result.task.text}（${result.date}）\nid=${result.task.id}${
         result.task.dueLabel === '' ? '' : `｜截止 ${result.task.dueLabel}`
       }`,
       `已添加「${clip(result.task.text, 20)}」`,
@@ -80,7 +82,7 @@ async function runTool(name, input, ctx) {
     const result = await ops.updateTask(ctx, input)
     await pushAll(ctx, 'tool-update-task')
     return ok(
-      `已更新事务：${result.task.text}（${result.weekCtx.label}）\nid=${result.task.id}${
+      `已更新事务：${result.task.text}（${result.date}）\nid=${result.task.id}${
         result.task.dueLabel === '' ? '' : `｜截止 ${result.task.dueLabel}`
       }｜${result.task.done ? '已完成' : '待办'}`,
       `已更新「${clip(result.task.text, 20)}」`,
@@ -91,7 +93,7 @@ async function runTool(name, input, ctx) {
     const result = await ops.completeTask(ctx, input)
     await pushAll(ctx, 'tool-complete-task')
     return ok(
-      `${result.task.done ? '已标记完成' : '已恢复为待办'}：${result.task.text}（${result.weekCtx.label}）`,
+      `${result.task.done ? '已标记完成' : '已恢复为待办'}：${result.task.text}（${result.date}）`,
       result.task.done ? '事务已完成' : '事务已恢复',
     )
   }
@@ -99,22 +101,7 @@ async function runTool(name, input, ctx) {
   if (name === 'delete_task') {
     const result = await ops.deleteTask(ctx, input)
     await pushAll(ctx, 'tool-delete-task')
-    return ok(`已删除事务：${result.task.text}（${result.weekCtx.label}）`, '事务已删除')
-  }
-
-  if (name === 'set_duty_day') {
-    const result = await ops.setDutyDay(ctx, input)
-    await pushAll(ctx, 'tool-set-duty-day')
-    const day = weekdayLabel(result.weekday)
-    if (result.cleared === true) {
-      return ok(`已清除 ${result.weekCtx.label} ${day} 的值日覆盖，恢复为值日组轮换。`, '值日覆盖已清除')
-    }
-    return ok(
-      `已设置 ${result.weekCtx.label} ${day} 的值日：${result.names.join(' ')}${result.area === '' ? '' : `｜${result.area}`}${
-        result.note === '' ? '' : `｜${result.note}`
-      }`,
-      '值日已更新',
-    )
+    return ok(`已删除事务：${result.task.text}（${result.date}）`, '事务已删除')
   }
 
   if (name === 'set_duty_week') {
@@ -175,11 +162,13 @@ async function runTool(name, input, ctx) {
 module.exports = {
   async activate(ctx) {
     const board = await ensureBoard(ctx)
+    const purged = await ops.purgeTaskHistory(ctx)
     lastDayKey = todayKey()
     lastWeekKey = weekKeyFromOffset(0)
     ctx.log('info', '班级事务台已激活', {
       weeks: Object.keys(board.weeks).length,
       groups: board.duty.groups.length,
+      purgedTasks: purged.removed,
     })
     if (ticker !== null) clearInterval(ticker)
     ticker = setInterval(() => {
@@ -218,9 +207,9 @@ module.exports = {
       const extra = typeof args === 'string' && args.trim() !== '' ? `用户的补充要求：${args.trim()}` : ''
       return {
         prompt:
-          '请先调用工具 plugin.com.classmanagement.board.get_overview（weekOffset=0）读取本周数据，' +
-          '然后用三条要点回答：①今天/本周最重要的待办；②今天谁值日；③最近一项安排或班级通知。' +
-          '不要编造数据；如果需要修改，先说明将要改什么，再调用对应工具。' +
+          '请先调用工具 plugin.com.classmanagement.board.get_overview（weekOffset=0）读取今日数据，' +
+          '然后用三条要点回答：①今天最重要的待办；②本周值日组和成员；③最近一项安排或班级通知。' +
+          '事务按天管理，旧事务只保留最近 7 天；不要编造数据，如果需要修改，先说明将要改什么，再调用对应工具。' +
           (extra === '' ? '' : `\n${extra}`),
       }
     }
@@ -244,7 +233,7 @@ module.exports = {
         if (text === '') {
           return { schema: widgetSchema(widgetId, data), toast: '请先输入事务内容' }
         }
-        await ops.addTask(ctx, { text, weekOffset: 0 })
+        await ops.addTask(ctx, { text, date: todayKey() })
         await ops.bumpQuickRev(ctx)
         await pushAll(ctx, 'widget-quick-add')
         return { schema: widgetSchema(widgetId, await ops.loadWeek(ctx, 0)), toast: '已添加事务' }
@@ -255,19 +244,12 @@ module.exports = {
         if (task === undefined) {
           return { schema: widgetSchema(widgetId, data), toast: '这条事务已不存在' }
         }
-        await ops.updateTask(ctx, { id: task.id, done: !task.done, weekOffset: 0 })
+        await ops.updateTask(ctx, { id: task.id, done: !task.done })
         await pushAll(ctx, 'widget-toggle-task')
         return {
           schema: widgetSchema(widgetId, await ops.loadWeek(ctx, 0)),
           toast: task.done ? '已恢复为待办' : '已完成',
         }
-      }
-      if (name === 'open-panel') {
-        const view = VIEWS.includes(actionParams.view) ? actionParams.view : 'board'
-        await ops.saveUi(ctx, { view, weekOffset: 0 })
-        await ctx.ui.openPanel(PANEL_ID)
-        await pushPanel(ctx, 'widget-open')
-        return { schema: widgetSchema(widgetId, await ops.loadWeek(ctx, 0)) }
       }
       return { schema: widgetSchema(widgetId, await ops.loadWeek(ctx, 0)) }
     } catch (error) {
@@ -301,6 +283,7 @@ module.exports = {
     resetNow: resetNowForTests,
     tick: async (ctx) => tick(ctx),
     renderPanel: async (ctx) => renderPanel(ctx),
+    purgeHistory: async (ctx) => ops.purgeTaskHistory(ctx),
     widgetSchema,
     nowMs,
   },
@@ -312,6 +295,7 @@ async function tick(ctx) {
   if (day === lastDayKey && week === lastWeekKey) return
   lastDayKey = day
   lastWeekKey = week
+  await ops.purgeTaskHistory(ctx)
   await pushAll(ctx, 'date-rollover')
 }
 

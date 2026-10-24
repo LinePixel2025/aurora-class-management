@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 视觉预览：用本机 Aurora 的宿主 CSS + 一个只读渲染器，把 4 个浮窗与 5 个面板视图
+ * 视觉预览：用本机 Aurora 的宿主 CSS + 一个只读渲染器，把 2 个浮窗与 4 个面板视图
  * 渲染成静态页面，并（可选）调用 Chrome headless 截图。
  *
  * 产物在 dev/.cache/ 下，不随插件发布。
@@ -159,7 +159,7 @@ async function buildWidgets(env) {
 
 async function buildPanels(env) {
   const panels = {}
-  for (const view of ['board', 'duty', 'schedule', 'notice', 'settings']) {
+  for (const view of ['board', 'duty', 'schedule', 'settings']) {
     await invokePanel(env, 'view', { view })
     panels[view] = (await invokePanel(env, 'refresh')).schema
   }
@@ -184,11 +184,11 @@ async function buildDemo() {
       replaceTasks: true,
       replaceSchedule: true,
       tasks: [
-        { text: '收数学作业', dueDate: '2026-10-22', dueTime: '08:00', priority: 'high', category: '作业', assignee: '数学课代表' },
-        { text: '物理实验报告', dueDate: '2026-10-23', dueTime: '20:00', priority: 'normal', category: '作业' },
-        { text: '班会主题征集', dueDate: '2026-10-22', priority: 'low', category: '活动', assignee: '班长' },
-        { text: '校运会报名表', dueDate: '2026-10-24', dueTime: '17:00', priority: 'normal', category: '通知', assignee: '体育委员' },
-        { text: '英语单词默写', dueDate: '2026-10-23', dueTime: '07:40', priority: 'normal', category: '作业' },
+        { text: '收数学作业', date: '2026-10-21', dueDate: '2026-10-21', dueTime: '08:00', priority: 'high', category: '作业', assignee: '数学课代表' },
+        { text: '物理实验报告', date: '2026-10-21', dueDate: '2026-10-22', dueTime: '20:00', priority: 'normal', category: '作业' },
+        { text: '班会主题征集', date: '2026-10-21', dueDate: '2026-10-21', priority: 'low', category: '活动', assignee: '班长' },
+        { text: '校运会报名表', date: '2026-10-21', dueDate: '2026-10-23', dueTime: '17:00', priority: 'normal', category: '通知', assignee: '体育委员' },
+        { text: '英语单词默写', date: '2026-10-21', dueDate: '2026-10-22', dueTime: '07:40', priority: 'normal', category: '作业' },
       ],
       schedule: [
         { weekday: 1, time: '08:00', title: '升旗仪式', place: '操场' },
@@ -196,7 +196,6 @@ async function buildDemo() {
         { weekday: 5, time: '15:30', title: '大扫除', place: '教室', note: '带清洁工具' },
       ],
       duty: {
-        days: { '5': { names: ['张三', '李四'], area: '教室', note: '大扫除' } },
         note: '本周五放学后大扫除',
       },
       announcement: '本周五下午大扫除，请各组带好清洁工具；周五放学前交校运会报名表。',
@@ -207,6 +206,13 @@ async function buildDemo() {
   if (idMatch !== null) await invokeTool(env, 'complete_task', { id: idMatch[1] })
   const widgets = await buildWidgets(env)
   const panels = await buildPanels(env)
+  const pendingAfter = await invokeTool(env, 'list_tasks', { status: 'pending' })
+  const editMatch = /id=([A-Za-z0-9_-]+)/.exec(pendingAfter.content)
+  if (editMatch !== null) {
+    await invokePanel(env, 'select-task', { id: editMatch[1] })
+    await invokePanel(env, 'view', { view: 'board' })
+    panels.boardEdit = (await invokePanel(env, 'refresh')).schema
+  }
   await main.deactivate()
   return { widgets, panels }
 }
@@ -306,10 +312,9 @@ ${cards}
 
 function panelHtml(view, schema, label, css, height = 830) {
   const title = {
-    board: '看板',
+    board: '今日',
     duty: '值日',
     schedule: '安排',
-    notice: '通知',
     settings: '设置',
   }[view]
   const script = `window.PreviewRender.render(document.getElementById('panel-root'), ${JSON.stringify(schema)});`
@@ -394,12 +399,22 @@ async function mainRun() {
   write('widgets-dark.html', widgetsHtml(demo, '示例数据', darkAll))
   write('widgets-empty-dark.html', widgetsHtml(empty, '空数据', darkAll))
   write('widgets-light.html', widgetsHtml(demo, '示例数据 · 浅色', lightAll))
-  for (const view of ['board', 'duty', 'schedule', 'notice', 'settings']) {
-    write(`panel-${view}-dark.html`, panelHtml(view, demo.panels[view], '示例数据', darkAll))
+  const panelHeights = { board: 1450, duty: 1450, schedule: 1900, settings: 1200 }
+  for (const view of ['board', 'duty', 'schedule', 'settings']) {
+    write(
+      `panel-${view}-dark.html`,
+      panelHtml(view, demo.panels[view], '示例数据', darkAll, panelHeights[view]),
+    )
   }
-  write('panel-board-light.html', panelHtml('board', demo.panels.board, '示例数据 · 浅色', lightAll))
-  write('panel-board-empty-dark.html', panelHtml('board', empty.panels.board, '空数据 · 首次打开', darkAll))
-  write('panel-board-full-dark.html', panelHtml('board', demo.panels.board, '示例数据 · 完整看板', darkAll, 1600))
+  write('panel-board-light.html', panelHtml('board', demo.panels.board, '示例数据 · 浅色', lightAll, 1450))
+  write('panel-board-empty-dark.html', panelHtml('board', empty.panels.board, '空数据 · 首次打开', darkAll, 830))
+  write('panel-board-full-dark.html', panelHtml('board', demo.panels.board, '示例数据 · 完整今日', darkAll, 1450))
+  if (demo.panels.boardEdit !== undefined) {
+    write(
+      'panel-board-edit-dark.html',
+      panelHtml('board', demo.panels.boardEdit, '示例数据 · 编辑卡片', darkAll, 1750),
+    )
+  }
 
   // 把主题里的字体文件一并放到预览目录，避免 @font-face 相对路径失效
   const fontNames = [...new Set([...theme.toString('utf8').matchAll(/url\('\.\/([^']+)'\)/g)].map((match) => match[1]))]
@@ -414,17 +429,17 @@ async function mainRun() {
     return
   }
   const jobs = [
-    ['widgets-dark.html', 'widgets-dark.png', 1120, 940],
-    ['widgets-empty-dark.html', 'widgets-empty-dark.png', 1120, 940],
-    ['widgets-light.html', 'widgets-light.png', 1120, 940],
-    ['panel-board-dark.html', 'panel-board-dark.png', 470, 900],
-    ['panel-duty-dark.html', 'panel-duty-dark.png', 470, 900],
-    ['panel-schedule-dark.html', 'panel-schedule-dark.png', 470, 900],
-    ['panel-notice-dark.html', 'panel-notice-dark.png', 470, 900],
-    ['panel-settings-dark.html', 'panel-settings-dark.png', 470, 900],
-    ['panel-board-light.html', 'panel-board-light.png', 470, 900],
+    ['widgets-dark.html', 'widgets-dark.png', 800, 620],
+    ['widgets-empty-dark.html', 'widgets-empty-dark.png', 800, 620],
+    ['widgets-light.html', 'widgets-light.png', 800, 620],
+    ['panel-board-dark.html', 'panel-board-dark.png', 470, 1550],
+    ['panel-duty-dark.html', 'panel-duty-dark.png', 470, 1550],
+    ['panel-schedule-dark.html', 'panel-schedule-dark.png', 470, 2000],
+    ['panel-settings-dark.html', 'panel-settings-dark.png', 470, 1300],
+    ['panel-board-light.html', 'panel-board-light.png', 470, 1550],
     ['panel-board-empty-dark.html', 'panel-board-empty-dark.png', 470, 900],
-    ['panel-board-full-dark.html', 'panel-board-full-dark.png', 470, 1660],
+    ['panel-board-full-dark.html', 'panel-board-full-dark.png', 470, 1550],
+    ['panel-board-edit-dark.html', 'panel-board-edit-dark.png', 470, 1850],
   ]
   process.stdout.write('\n截图：\n')
   for (const [htmlName, pngName, width, height] of jobs) {

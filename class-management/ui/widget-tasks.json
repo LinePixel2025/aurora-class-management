@@ -1,8 +1,9 @@
 {
   "version": 1,
   "nodes": [
-    { "type": "text", "text": "正在读取本周事务…", "tone": "muted" },
+    { "type": "text", "text": "正在读取今日事务…", "tone": "muted" },
     { "type": "progress", "percent": 0 },
-    { "type": "text", "text": "点「管理台」打开班级管理台。", "tone": "muted" }
+    { "type": "input", "bind": "quickTask_0", "placeholder": "快速加一条今日事务" },
+    { "type": "button", "text": "＋ 添加事务", "action": { "method": "quick-add", "toast": "已添加事务" } }
   ]
 }

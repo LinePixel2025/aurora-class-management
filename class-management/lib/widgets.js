@@ -1,11 +1,12 @@
 'use strict'
 
 /**
- * 4 个桌面浮窗的声明式 schema。
+ * 2 个桌面浮窗的声明式 schema。
  *
  * 注意：Aurora 0.5.1 的 `PluginSchemaRenderer` 会把 row / grid 的子节点包进一个竖向
- * `.plugin-schema` 容器，因此 `row` / `grid` 在这版宿主里**不会真的横向排列**。
- * 浮窗按「一列到底」设计，用紧凑条目而不是并排按钮。
+ * `.plugin-schema` 容器，因此浮窗按「一列到底」设计，用紧凑条目而不是并排按钮。
+ *
+ * 浮窗只保留必要动作：今日事务的快速添加与点条目完成/撤销；不再有“打开班级事务台”按钮。
  */
 
 const { clip } = require('./util')
@@ -14,13 +15,6 @@ const { dueLabel, isOverdue } = require('./ops')
 
 function button(text, action) {
   return { type: 'button', text, action }
-}
-
-function openButton(view, label) {
-  return button(label === undefined ? '打开班级事务台' : label, {
-    method: 'open-panel',
-    params: { view },
-  })
 }
 
 function taskButtonText(task, weekCtx) {
@@ -34,64 +28,67 @@ function taskButtonText(task, weekCtx) {
 }
 
 function namesSummary(names) {
-  if (names.length === 0) return '待安排'
-  if (names.length <= 3) return names.join(' ')
-  return `${names.slice(0, 3).join(' ')} 等 ${names.length} 人`
+  if (names.length === 0) return '待设置'
+  if (names.length <= 4) return names.join(' ')
+  return `${names.slice(0, 4).join(' ')} 等 ${names.length} 人`
 }
 
-function dutyWidget(data) {
-  const today = data.weekCtx.todayWeekday
-  const hasNames = data.duty.days.some(
-    (entry) => entry.names.length > 0 || entry.area !== '' || entry.note !== '',
-  )
+/** 班级速览 + 本周值日（无按钮）。 */
+function overviewWidget(data) {
+  const teacher = data.settings.teacher === '' ? '' : ` · 班主任 ${data.settings.teacher}`
   const groupLabel =
-    data.duty.group.members.length === 0 && !data.duty.hasOverrideGroup
-      ? '未设置'
-      : data.duty.groupName
-  const items = data.duty.days.map((entry) => {
-    const isToday = entry.weekday === today
-    const area = entry.area !== '' ? ` · ${entry.area}` : ''
-    return {
-      label: isToday ? `${entry.label} · 今天` : entry.label,
-      value: `${namesSummary(entry.names)}${area}`,
-      tone: isToday ? (entry.names.length > 0 ? 'ok' : 'warn') : entry.names.length > 0 ? 'default' : 'muted',
-    }
-  })
+    data.duty.members.length === 0 && !data.duty.hasOverrideGroup ? '待设置' : data.duty.groupName
+  const members = namesSummary(data.duty.members)
+  const summary = `${data.counts.pending} 待办 / ${data.counts.done} 完成`
   const nodes = [
-    { type: 'text', text: data.weekCtx.label, tone: 'muted' },
-    { type: 'text', text: `值日组：${groupLabel}`, tone: groupLabel === '未设置' ? 'muted' : 'default' },
-    ...(hasNames
-      ? [{ type: 'list', items }]
-      : [
-          {
-            type: 'text',
-            text: '本周还没有值日名单。点「编辑值日」填写分组和成员，或让 Agent 帮你设置。',
-            tone: 'muted',
-          },
-        ]),
-    { type: 'divider' },
-    openButton('duty', '编辑值日'),
-    openButton('board'),
+    { type: 'heading', text: data.settings.className },
+    { type: 'text', text: `${data.weekCtx.label}${teacher}`, tone: 'muted' },
+    {
+      type: 'keyValue',
+      items: [
+        { label: '今日事务', value: summary },
+        { label: '本周值日', value: groupLabel === '待设置' ? groupLabel : `${groupLabel} · ${members}` },
+        { label: '本周安排', value: `${data.schedule.length} 项` },
+      ],
+    },
   ]
+  if (data.duty.note !== '') {
+    nodes.push({ type: 'text', text: `值日备注：${clip(data.duty.note, 40)}`, tone: 'muted' })
+  }
+  if (data.announcement !== '') {
+    nodes.push({ type: 'text', text: `通知：${clip(data.announcement, 72)}` })
+  }
   return { version: 1, nodes }
 }
 
+/** 今日事务 + 本周安排。 */
 function tasksWidget(data) {
   const visible = data.settings.showCompleted ? data.tasks.slice(0, 5) : data.pendingTasks.slice(0, 5)
   const hidden = data.settings.showCompleted
     ? Math.max(0, data.tasks.length - visible.length)
     : Math.max(0, data.pendingTasks.length - visible.length)
+  const scheduleItems = data.schedule.slice(0, 4).map((entry) => {
+    const time = entry.time === '' ? '' : ` ${entry.time}`
+    const place = entry.place === '' ? '' : ` · ${entry.place}`
+    return {
+      label: `${weekdayLabel(entry.weekday)}${time}${entry.weekday === data.weekCtx.todayWeekday ? ' · 今天' : ''}`,
+      value: `${clip(entry.title, 24)}${place}`,
+      tone: entry.weekday === data.weekCtx.todayWeekday ? 'ok' : 'default',
+    }
+  })
   const nodes = [
     {
       type: 'text',
-      text: `待办 ${data.counts.pending} · 完成 ${data.counts.done}${data.counts.overdue > 0 ? ` · 逾期 ${data.counts.overdue}` : ''}`,
+      text: `${data.taskDateLabel} · 待办 ${data.counts.pending} · 完成 ${data.counts.done}${
+        data.counts.overdue > 0 ? ` · 逾期 ${data.counts.overdue}` : ''
+      }`,
       tone: data.counts.pending === 0 && data.counts.total > 0 ? 'ok' : 'default',
     },
     { type: 'progress', percent: data.completion },
     {
       type: 'input',
       bind: `quickTask_${data.ui.quickRev}`,
-      placeholder: '快速加一条事务，例如：收物理作业',
+      placeholder: '快速加一条今日事务，例如：收物理作业',
     },
     button('＋ 添加事务', { method: 'quick-add', toast: '已添加事务' }),
     ...visible.map((task) =>
@@ -107,8 +104,8 @@ function tasksWidget(data) {
             type: 'text',
             text:
               data.counts.total === 0
-                ? '本周还没有事务。在上面输入内容点「添加事务」，或让 Agent 帮你加一条。'
-                : '本周事务都完成了。',
+                ? '今天还没有事务。在上面输入内容点「添加事务」，或让 Agent 帮你加一条。'
+                : '今天的事务都完成了。',
             tone: 'muted',
           },
         ]
@@ -122,74 +119,30 @@ function tasksWidget(data) {
             tone: 'muted',
           },
         ]),
-    ...(hidden > 0 ? [{ type: 'text', text: `还有 ${hidden} 条，打开班级事务台查看。`, tone: 'muted' }] : []),
+    ...(hidden > 0
+      ? [{ type: 'text', text: `还有 ${hidden} 条，打开班级事务台查看。`, tone: 'muted' }]
+      : []),
     { type: 'divider' },
-    openButton('board'),
-  ]
-  return { version: 1, nodes }
-}
-
-function scheduleWidget(data) {
-  const today = data.weekCtx.todayWeekday
-  const visible = data.schedule.slice(0, 4)
-  const items = visible.map((entry) => {
-    const time = entry.time === '' ? '' : ` ${entry.time}`
-    const place = entry.place === '' ? '' : ` · ${entry.place}`
-    return {
-      label: `${weekdayLabel(entry.weekday)}${time}${entry.weekday === today ? ' · 今天' : ''}`,
-      value: `${clip(entry.title, 24)}${place}`,
-      tone: entry.weekday === today ? 'ok' : 'default',
-    }
-  })
-  if (items.length === 0) items.push({ label: '本周', value: '还没有安排', tone: 'muted' })
-  return {
-    version: 1,
-    nodes: [
-      { type: 'text', text: data.weekCtx.label, tone: 'muted' },
-      { type: 'list', items },
-      ...(data.schedule.length > visible.length
-        ? [{ type: 'text', text: `还有 ${data.schedule.length - visible.length} 项，打开班级事务台查看。`, tone: 'muted' }]
-        : []),
-      ...(data.schedule.length === 0
-        ? [{ type: 'text', text: '点「编辑安排」添加班会、活动或考试。', tone: 'muted' }]
-        : []),
-      { type: 'divider' },
-      openButton('schedule', '编辑安排'),
-      openButton('board'),
-    ],
-  }
-}
-
-function overviewWidget(data) {
-  const teacher = data.settings.teacher === '' ? '班主任未设置' : `班主任 ${data.settings.teacher}`
-  const nodes = [
-    { type: 'heading', text: data.settings.className },
-    { type: 'text', text: `${data.weekCtx.label} · ${teacher}`, tone: 'muted' },
-    { type: 'progress', percent: data.completion },
-    {
-      type: 'keyValue',
-      items: [
-        { label: '本周事务', value: `${data.counts.pending} 待办 / ${data.counts.done} 完成` },
-        { label: '值日组', value: data.duty.groupName },
-        { label: '今日值日', value: data.todayDuty === '' ? '无' : data.todayDuty },
-        { label: '本周安排', value: `${data.schedule.length} 项` },
-      ],
-    },
-    {
-      type: 'text',
-      text: data.announcement === '' ? '本周暂无通知。' : `通知：${clip(data.announcement, 76)}`,
-      tone: data.announcement === '' ? 'muted' : 'default',
-    },
-    openButton('board'),
+    { type: 'text', text: '本周安排', tone: 'muted' },
+    ...(scheduleItems.length > 0
+      ? [{ type: 'list', items: scheduleItems }]
+      : [{ type: 'text', text: '本周暂无安排。', tone: 'muted' }]),
+    ...(data.schedule.length > scheduleItems.length
+      ? [
+          {
+            type: 'text',
+            text: `还有 ${data.schedule.length - scheduleItems.length} 项安排。`,
+            tone: 'muted',
+          },
+        ]
+      : []),
   ]
   return { version: 1, nodes }
 }
 
 function widgetSchema(widgetId, data) {
-  if (widgetId === 'duty-week') return dutyWidget(data)
-  if (widgetId === 'week-tasks') return tasksWidget(data)
-  if (widgetId === 'week-schedule') return scheduleWidget(data)
   if (widgetId === 'week-overview') return overviewWidget(data)
+  if (widgetId === 'week-tasks') return tasksWidget(data)
   return null
 }
 
