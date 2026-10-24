@@ -190,6 +190,11 @@ html[data-theme="dark"] {
   box-sizing: border-box;
 }
 
+/* 页面里 flex 容器的 display 会盖掉 [hidden] 的 UA 样式，这里统一兜底 */
+[hidden] {
+  display: none !important;
+}
+
 html {
   min-height: 100%;
 }
@@ -248,6 +253,12 @@ select:disabled,
 textarea:disabled {
   opacity: 0.42;
   cursor: not-allowed;
+}
+
+/* 信息型控件禁用后仍要能读，只做轻度弱化 */
+.cal-duty:disabled,
+.cal-schedule-row:disabled {
+  opacity: 0.72;
 }
 
 /* ════════════════════════════════════════════
@@ -502,7 +513,6 @@ textarea:disabled {
 
 .cal-day-badge {
   flex: 0 0 auto;
-  margin-left: auto;
   padding: 2px 7px;
   border: 1px solid var(--cal-line);
   border-radius: 999px;
@@ -515,6 +525,30 @@ textarea:disabled {
 
 .cal-day-badge:empty {
   display: none;
+}
+
+/* 每天标题里的“＋ 安排”入口（calendar.js 动态插入） */
+.cal-schedule-add {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid var(--cal-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--cal-duty);
+  font-family: inherit;
+  font-size: 10.5px;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease, background-color 120ms ease;
+}
+
+.cal-schedule-add:hover:not(:disabled) {
+  border-color: var(--cal-duty);
+  background: var(--cal-duty-soft);
+  color: var(--cal-text);
 }
 
 .cal-day.is-today .cal-day-badge {
@@ -571,7 +605,8 @@ textarea:disabled {
   border: 1.5px solid var(--cal-line-strong);
   border-radius: 50%;
   background: transparent;
-  color: var(--cal-muted);
+  /* calendar.js 会写入 ○ / ✓：待办只留圆环，完成时再显示对勾 */
+  color: transparent;
   font-size: 11px;
   line-height: 1;
   cursor: pointer;
@@ -581,7 +616,6 @@ textarea:disabled {
 .cal-task-toggle:hover:not(:disabled) {
   border-color: var(--cal-accent);
   background: var(--cal-accent-soft);
-  color: var(--cal-accent);
 }
 
 .cal-task.is-done .cal-task-toggle {
@@ -693,6 +727,17 @@ textarea:disabled {
   flex: 1 1 auto;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.cal-schedule-place {
+  flex: 0 1 auto;
+  max-width: 48%;
+  overflow: hidden;
+  color: var(--cal-muted);
+  font-size: 10.5px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cal-schedule-time:empty {

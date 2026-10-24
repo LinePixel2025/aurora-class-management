@@ -449,13 +449,18 @@
 
     if (elements.stats !== null && elements.stats !== undefined) {
       const stats = data.stats !== null && typeof data.stats === 'object' ? data.stats : {}
-      elements.stats.textContent =
-        '待办 ' +
-        countOf(stats.pending) +
-        ' / 完成 ' +
-        countOf(stats.done) +
-        ' / 逾期 ' +
-        countOf(stats.overdue)
+      // 拆成子元素，和 calendar.css 的 .cal-stats > * 规则配合，窄栏下可换行。
+      const parts = [
+        '待办 ' + countOf(stats.pending) + ' / ',
+        '完成 ' + countOf(stats.done) + ' / ',
+        '逾期 ' + countOf(stats.overdue),
+      ]
+      clearChildren(elements.stats)
+      for (const part of parts) {
+        const item = document.createElement('span')
+        item.textContent = part
+        elements.stats.appendChild(item)
+      }
     }
 
     if (elements.dutySummary !== null && elements.dutySummary !== undefined) {

@@ -38,8 +38,19 @@ function findChrome() {
   return candidates.find((candidate) => fs.existsSync(candidate)) || null
 }
 
+/** 同步等待文件出现且非空；Chrome 写截图是「临时文件 + 重命名」，需要避开瞬时窗口。 */
+function waitForFile(filePath, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() <= deadline) {
+    const stat = fs.statSync(filePath, { throwIfNoEntry: false })
+    if (stat !== undefined && stat.size > 0) return stat
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50)
+  }
+  return null
+}
+
 function screenshot(chrome, htmlPath, pngPath, width, height) {
-  // 先删旧图：避免截图失败时旧文件让 existsSync 误判成功。
+  // 先删旧图：避免截图失败时旧文件让等待逻辑误判成功。
   fs.rmSync(pngPath, { force: true })
   const args = [
     '--headless=new',
@@ -54,7 +65,8 @@ function screenshot(chrome, htmlPath, pngPath, width, height) {
     `file:///${htmlPath.replace(/\\/g, '/')}`,
   ]
   const result = spawnSync(chrome, args, { stdio: 'ignore', timeout: 60000 })
-  return result.status === 0 && fs.existsSync(pngPath)
+  if (result.status !== 0) return null
+  return waitForFile(pngPath)
 }
 
 // ───────────────────────── 演示数据 ─────────────────────────
@@ -467,7 +479,9 @@ function buildHtml({ html, css, js, theme, driver, width }) {
   // Chrome headless 在 Windows 上有 500px 的最小窗口宽度，但 --screenshot 会按
   // --window-size 的 470px 裁图；把 html/body 显式锁到截图宽度，避免右侧 30px 被裁掉。
   const styleBlock = `<style>\n${usedCss}\nhtml, body { width: ${width}px; }\n</style>`
-  const scriptBlock = `<script>\n${mockScript()}\n</script>\n<script>\n${js}\n</script>`
+  // 内联脚本里若出现 </script> 会提前结束标签；转义后字符串语义不变。
+  const inlineJs = js.replace(/<\/script>/gi, '<\\/script>')
+  const scriptBlock = `<script>\n${mockScript()}\n</script>\n<script>\n${inlineJs}\n</script>`
 
   let page = html
   page = replaceRequired(
@@ -535,16 +549,16 @@ async function mainRun() {
   for (const preview of previews) {
     const htmlPath = path.join(CACHE, preview.name)
     const pngPath = path.join(CACHE, preview.png)
-    const done = screenshot(chrome, htmlPath, pngPath, preview.width, preview.height)
+    const stat = screenshot(chrome, htmlPath, pngPath, preview.width, preview.height)
+    const done = stat !== null
     process.stdout.write(`  ${done ? '✓' : '✗'} ${pngPath}\n`)
     if (!done) process.exitCode = 1
-    else pngPaths.push(pngPath)
+    else pngPaths.push({ pngPath, size: stat.size })
   }
 
   if (process.exitCode !== 1) {
     process.stdout.write(`\n生成完成（${htmlPaths.length} 个预览页，${pngPaths.length} 张截图）：\n`)
-    for (const pngPath of pngPaths) {
-      const size = fs.statSync(pngPath).size
+    for (const { pngPath, size } of pngPaths) {
       process.stdout.write(`  · ${pngPath}（${Math.round(size / 1024)} KB）\n`)
     }
   }
