@@ -8,7 +8,7 @@
  * - 从本机 Aurora 0.5.2 的 app.asar 提取宿主原版 `validatePanelSchema`，校验每一份
  *   静态与动态 schema（找不到 Aurora 时降级为内置结构检查并打印警告）；
  * - 覆盖时间、存储、旧数据迁移、每日清空与 7 天历史、整周值日、工具、2 个浮窗、
- *   4 个面板视图、推送与跨天刷新。
+ *   4 个面板视图、推送、跨天刷新与三类可选通知（每日简报 / 截止提醒 / 周一值日）。
  *
  * 运行：node dev/test-plugin.mjs
  */
@@ -313,15 +313,23 @@ function createContext(options) {
   const logs = []
   const opened = []
   const toasts = []
+  const notifications = []
+  // 宿主 notify() 的返回值；默认成功，false 用于覆盖通知失败路径
+  const notifyResult = settings.notifyResult !== false
   const config = {
     className: '高二(15)班',
     teacher: '王老师',
     termStartDate: '',
     showCompleted: false,
+    notifyDaily: false,
+    notifyTime: '07:30',
+    notifyDue: false,
+    notifyDueLead: 10,
+    notifyDuty: false,
     ...(settings.config || {}),
   }
   const ctx = {
-    plugin: { id: PLUGIN_ID, version: '1.2.0', root: PLUGIN, dataDir: PLUGIN, isDev: true },
+    plugin: { id: PLUGIN_ID, version: '1.3.0', root: PLUGIN, dataDir: PLUGIN, isDev: true },
     config,
     storage: {
       async get(key) {
@@ -344,7 +352,11 @@ function createContext(options) {
         throw new Error('测试中不允许联网')
       },
     },
-    notify: async () => false,
+    notify: async (payload) => {
+      const input = payload !== null && typeof payload === 'object' ? payload : {}
+      notifications.push({ title: input.title, body: input.body })
+      return notifyResult
+    },
     log(level, message, detail) {
       logs.push({ level, message, detail })
     },
@@ -362,7 +374,7 @@ function createContext(options) {
     },
     signal: new AbortController().signal,
   }
-  return { ctx, store, pushes, logs, opened, toasts }
+  return { ctx, store, pushes, logs, opened, toasts, notifications }
 }
 
 function pushCount(env) {
@@ -443,6 +455,26 @@ function taskByText(env, text) {
   return allTasksOf(env).find((task) => task.text === text) || null
 }
 
+/** 固定时钟 + 未激活的 context：避免 activate 立即补发通知污染“只发一次”断言。 */
+function atTime(date, config) {
+  main.__test.setNow(date.getTime())
+  return createContext({ config })
+}
+
+/** 调一次通知检查；实现缺失时给出明确失败信息，而不是每个用例都只报 TypeError。 */
+async function checkNotifications(env) {
+  if (typeof main.__test.checkNotifications !== 'function') {
+    throw new Error('main.__test.checkNotifications 尚未实现（等实现分片就绪后复跑）')
+  }
+  await main.__test.checkNotifications(env.ctx)
+}
+
+async function addTask(env, input) {
+  const result = await invokeTool(env, 'add_task', input)
+  assertEqual(result.isError, undefined, `预置事务失败：${result.content}`)
+  return result
+}
+
 async function mainTest() {
   hostValidator = await loadHostValidator()
   process.stdout.write(`校验器：${validatorMode}\n`)
@@ -452,15 +484,25 @@ async function mainTest() {
   header('清单与静态文件')
   await test('清单基础字段', async () => {
     assertEqual(manifest.id, PLUGIN_ID)
-    assertEqual(manifest.version, '1.2.0')
+    assertEqual(manifest.version, '1.3.0')
     assertEqual(manifest.apiVersion, 1)
     assertEqual(manifest.minAuroraVersion, '0.5.2')
     assertEqual(manifest.main, 'main.js')
     assertEqual(manifest.activation, 'startup')
     assert(manifest.description.length <= 300, 'description 超过 300')
   })
-  await test('权限最小集（无多余权限）', async () => {
-    const expected = ['tools', 'skills', 'commands', 'storage', 'config', 'logging', 'ui.panels', 'ui.widgets']
+  await test('权限最小集（含 notifications，无多余权限）', async () => {
+    const expected = [
+      'tools',
+      'skills',
+      'commands',
+      'storage',
+      'config',
+      'logging',
+      'ui.panels',
+      'ui.widgets',
+      'notifications',
+    ]
     assertEqual([...manifest.permissions].sort().join(','), [...expected].sort().join(','))
   })
   await test('工具数量与命名/参数/只读标记', async () => {
@@ -501,7 +543,11 @@ async function mainTest() {
     assertEqual(manifest.contributes.commands.map((command) => command.name).sort().join(','), ['class', 'week-plan'].sort().join(','))
     assertEqual(manifest.contributes.skills[0], 'skills/class-board')
     assert(fs.existsSync(path.join(PLUGIN, 'skills', 'class-board', 'SKILL.md')), '缺少 SKILL.md')
-    assertEqual(manifest.config.fields.length, 4)
+    const configKeys = manifest.config.fields.map((field) => field.key)
+    assertEqual(configKeys.length, 9)
+    for (const key of ['notifyDaily', 'notifyTime', 'notifyDue', 'notifyDueLead', 'notifyDuty']) {
+      assert(configKeys.includes(key), `配置字段缺少 ${key}`)
+    }
   })
   await test('静态 schema 通过宿主校验', async () => {
     for (const file of ['ui/panel.json', 'ui/widget-overview.json', 'ui/widget-tasks.json']) {
@@ -984,6 +1030,153 @@ async function mainTest() {
       assert(result.content.includes('目标周'), '日期越界提示不明确')
     })
   })
+
+  header('通知与定时提醒')
+  await test('三类通知默认全关：不发送、不写 notify.v1', async () => {
+    // 周一 08:00：每日简报、值日提醒、08:00 截止提醒三者同时“满足时间条件”，最能验证开关
+    const env = atTime(new Date(2026, 9, 19, 8, 0, 0, 0), {})
+    await addTask(env, { text: '周一 08:00 截止的作业', dueTime: '08:00' })
+    await checkNotifications(env)
+    assertEqual(env.notifications.length, 0, '默认全关时不应产生任何通知')
+    assertEqual(env.store.has('notify.v1'), false, '默认全关时不应写入 notify.v1')
+  })
+  await test('每日简报到时后只发一次', async () => {
+    const early = atTime(new Date(2026, 9, 21, 7, 29, 0, 0), { notifyDaily: true })
+    await checkNotifications(early)
+    assertEqual(early.notifications.length, 0, '未到 notifyTime 不应发每日简报')
+
+    const env = atTime(new Date(2026, 9, 21, 7, 31, 0, 0), { notifyDaily: true }) // 周三 07:31
+    await checkNotifications(env)
+    assertEqual(env.notifications.length, 1, '到时后应发一条每日简报')
+    assertEqual(env.notifications[0].title, '今日班级事务')
+    assert(
+      typeof env.notifications[0].body === 'string' && env.notifications[0].body !== '',
+      '每日简报正文为空',
+    )
+    const saved = env.store.get('notify.v1')
+    assert(
+      saved !== undefined && typeof saved.dailyDate === 'string' && saved.dailyDate !== '',
+      '未记录当天简报已发送',
+    )
+    await checkNotifications(env)
+    assertEqual(env.notifications.length, 1, '重复调用不应重复发送每日简报')
+  })
+  await test('截止提醒：未到提醒点不发，到时只发一次', async () => {
+    const env = atTime(new Date(2026, 9, 21, 7, 49, 0, 0), { notifyDue: true, notifyDueLead: 10 })
+    await addTask(env, { text: '交英语作业', dueTime: '08:00' }) // 提前 10 分钟 = 07:50
+    await checkNotifications(env)
+    assertEqual(env.notifications.length, 0, '未到 08:00 - 10 分钟不应提醒')
+
+    main.__test.setNow(new Date(2026, 9, 21, 7, 55, 0, 0).getTime())
+    await checkNotifications(env)
+    assertEqual(env.notifications.length, 1, '已到提醒点应发一条截止提醒')
+    assertEqual(env.notifications[0].title, '事务即将截止')
+    const task = taskByText(env, '交英语作业')
+    assert(task !== null, '找不到预置事务')
+    const saved = env.store.get('notify.v1')
+    assert(
+      saved !== undefined && saved.due !== null && typeof saved.due === 'object',
+      '未记录截止提醒去重状态',
+    )
+    assert(
+      Object.prototype.hasOwnProperty.call(saved.due, task.id),
+      '未记录该事务今天已提醒',
+    )
+    await checkNotifications(env)
+    assertEqual(env.notifications.length, 1, '重复调用不应重复发送截止提醒')
+  })
+  await test('notifyDueLead 为 0 时按 0 分钟提醒（不回落成 10）', async () => {
+    const env = atTime(new Date(2026, 9, 21, 7, 55, 0, 0), { notifyDue: true, notifyDueLead: 0 })
+    await addTask(env, { text: '交化学作业', dueTime: '08:00' })
+    await checkNotifications(env)
+    assertEqual(env.notifications.length, 0, '提前量为 0 时 07:55 不应提醒')
+    main.__test.setNow(new Date(2026, 9, 21, 8, 0, 0, 0).getTime())
+    await checkNotifications(env)
+    assertEqual(env.notifications.length, 1, '提前量为 0 时 08:00 应提醒')
+  })
+  await test('多条同时到点的截止任务合并为一条摘要', async () => {
+    const env = atTime(new Date(2026, 9, 21, 7, 55, 0, 0), { notifyDue: true, notifyDueLead: 10 })
+    for (const text of ['交数学作业', '交英语作业', '交物理作业']) {
+      await addTask(env, { text, dueTime: '08:00' })
+    }
+    await checkNotifications(env)
+    assertEqual(env.notifications.length, 1, '多条任务应合并成一条摘要，而不是逐条发送')
+    assertEqual(env.notifications[0].title, '事务即将截止')
+  })
+  await test('周一值日提醒本周只发一次', async () => {
+    const env = atTime(new Date(2026, 9, 19, 7, 31, 0, 0), { notifyDuty: true }) // 周一 07:31
+    await checkNotifications(env)
+    assertEqual(env.notifications.length, 1, '周一到时后应发一条本周值日提醒')
+    assertEqual(env.notifications[0].title, '本周值日')
+    const saved = env.store.get('notify.v1')
+    assert(
+      saved !== undefined && typeof saved.dutyWeek === 'string' && saved.dutyWeek !== '',
+      '未记录本周值日已提醒',
+    )
+    await checkNotifications(env)
+    assertEqual(env.notifications.length, 1, '重复调用不应重复发送值日提醒')
+  })
+  await test('非周一不发值日提醒', async () => {
+    const env = atTime(new Date(2026, 9, 20, 7, 31, 0, 0), { notifyDuty: true }) // 周二
+    await checkNotifications(env)
+    assertEqual(env.notifications.length, 0, '非周一不应发值日提醒')
+  })
+  await test('非法配置回退与截断（readSettings）', async () => {
+    const defaults = stateLib.readSettings({})
+    assertEqual(defaults.notifyDaily, false)
+    assertEqual(defaults.notifyTime, '07:30')
+    assertEqual(defaults.notifyDue, false)
+    assertEqual(defaults.notifyDueLead, 10)
+    assertEqual(defaults.notifyDuty, false)
+    assertEqual(stateLib.readSettings({ notifyTime: '25:99' }).notifyTime, '07:30')
+    assertEqual(stateLib.readSettings({ notifyTime: 'not-a-time' }).notifyTime, '07:30')
+    assertEqual(stateLib.readSettings({ notifyTime: '08:05' }).notifyTime, '08:05')
+    assertEqual(stateLib.readSettings({ notifyDueLead: 999 }).notifyDueLead, 120)
+    assertEqual(stateLib.readSettings({ notifyDueLead: -5 }).notifyDueLead, 0)
+    assertEqual(stateLib.readSettings({ notifyDueLead: 0 }).notifyDueLead, 0)
+  })
+  await test('明天截止的任务今天不提醒', async () => {
+    const env = atTime(new Date(2026, 9, 21, 7, 55, 0, 0), { notifyDue: true, notifyDueLead: 10 })
+    await addTask(env, { text: '明天交实验报告', dueDate: '2026-10-22', dueTime: '08:00' })
+    await checkNotifications(env)
+    assertEqual(env.notifications.length, 0, '明天截止的任务不应今天提醒')
+  })
+  await test('ctx.notify 返回 false：不抛错并记录 warn', async () => {
+    main.__test.setNow(new Date(2026, 9, 21, 7, 31, 0, 0).getTime())
+    const env = createContext({ config: { notifyDaily: true }, notifyResult: false })
+    await checkNotifications(env) // 抛错会让本测试直接失败
+    assertEqual(env.notifications.length, 1, '通知失败路径也应尝试发送一次')
+    assert(
+      env.logs.some((entry) => entry.level === 'warn'),
+      '通知发送失败应记录 warn 日志',
+    )
+  })
+  await test('插件重启后（同一存储）不重复发通知', async () => {
+    const clock = new Date(2026, 9, 21, 7, 31, 0, 0).getTime()
+    main.__test.setNow(clock)
+    const first = createContext({ config: { notifyDaily: true } })
+    await checkNotifications(first)
+    assertEqual(first.notifications.length, 1, '首次运行应发一条每日简报')
+    const snapshot = new Map(first.store)
+    const second = createContext({ config: { notifyDaily: true } })
+    for (const [key, value] of snapshot) await second.ctx.storage.set(key, value)
+    await checkNotifications(second)
+    assertEqual(second.notifications.length, 0, '重启后同一存储不应重复发送当天简报')
+  })
+  await test('activate 时立即补发一次，且不重复', async () => {
+    main.__test.setNow(new Date(2026, 9, 21, 7, 31, 0, 0).getTime())
+    const env = createContext({ config: { notifyDaily: true } })
+    await main.activate(env.ctx)
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      assertEqual(env.notifications.length, 1, '激活后应立即补发一条每日简报')
+      await checkNotifications(env)
+      assertEqual(env.notifications.length, 1, '激活补发后再次检查不应重复发送')
+    } finally {
+      await main.deactivate()
+    }
+  })
+  main.__test.resetNow()
 
   header('管理台面板')
   await withEnv({}, async (env) => {

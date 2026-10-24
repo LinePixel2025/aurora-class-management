@@ -9,6 +9,7 @@
 - **今日事务**：事务按天管理，界面只显示今天；旧事务保留最近 7 天，超出自动清理，可由 Agent 按日期查回；
 - **整周值日**：一周由一组负责，按分组顺序每周轮换，不再按天换人；
 - **Agent 可改**：12 个插件工具 + 1 个 Skill + 2 条斜杠命令；写入后浮窗与面板自动刷新，不用手动点刷新；
+- **可选系统通知**：每日简报 / 截止提醒 / 周一值日提醒，默认全关，可在插件设置里开启并配置提醒时间；
 - 数据只存插件私有存储，不联网、不读写用户文件、不接触 Aurora 凭据。
 
 ![2 张桌面浮窗（示例数据）](docs/images/widgets-dark.png)
@@ -102,9 +103,9 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 当前离线验证结果：
 
 - `check-plugin.mjs`：通过（0 错误；本仓库未包含工具包，需要本地自备）；
-- `dev/test-plugin.mjs`：**59/59 项检查通过**；
-  覆盖时间/周次、存储读取、串行并发写、2 个浮窗、12 个工具、4 个面板视图与全部编辑动作、每日清空与 7 天历史、整周值日轮换、命令、推送目标/条数、整周计划失败回滚、跨天/跨周刷新、旧数据迁移、容量修剪；
-- 所有静态与动态 schema 均通过 **Aurora 0.5.1 宿主原版** `validatePanelSchema`；清单同时通过从本机 Aurora 提取的宿主原版 zod `parsePluginManifest`；
+- `dev/test-plugin.mjs`：**71/71 项检查通过**；
+  覆盖时间/周次、存储读取、串行并发写、2 个浮窗、12 个工具、4 个面板视图与全部编辑动作、每日清空与 7 天历史、整周值日轮换、命令、推送目标/条数、可选系统通知（三类通知的开关 / 提醒时间 / 去重 / 重启后不重发）、整周计划失败回滚、跨天/跨周刷新、旧数据迁移、容量修剪；
+- 所有静态与动态 schema 均通过 **Aurora 0.5.2 宿主原版** `validatePanelSchema`；清单同时通过从本机 Aurora 提取的宿主原版 zod `parsePluginManifest`；
 - `dist/class-management-1.1.0.zip`：46.5 KB，SHA-256 `74C3D29BEF5CD94B807B481A2180968CD1329C4A94084FD7CAF91C11C8D8FDAB`，manifest 在 zip 根，条目使用正斜杠，无 `node_modules`。
 
 真机验收清单（需要你在 Aurora 里点一遍）：
@@ -135,8 +136,24 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 - 业务数据在 `%APPDATA%\Aurora\plugin-data\com.classmanagement.board\storage.json`（键 `board.v1`，内部 schema v2），
   界面状态在 `ui.v1`；
 - 单值 ≤ 240 KB（宿主上限 256 KB），每周事务 ≤ 80、安排 ≤ 60、最多 40 周；事务历史保留 7 天，超限先修剪最旧周；
-- 权限只有 `tools / skills / commands / storage / config / logging / ui.panels / ui.widgets`；
+- 权限只有 `tools / skills / commands / storage / config / logging / ui.panels / ui.widgets / notifications`；
 - 插件进程以当前用户权限运行，**不是 OS 沙箱，安装即信任**；本插件不发起网络请求、不读写插件目录以外的文件。
+
+## 系统通知（可选）
+
+默认全部关闭，在 Aurora 设置 → 插件 → 班级事务台 开启并配置：
+
+- **每日简报**：到达提醒时间后发送今日待办 / 完成计数与本周值日组，每天最多一次；
+- **截止提醒**：对今天截止（或未填截止日期）的事务，在截止时间前 N 分钟提醒；每条事务每天最多一次，一次最多汇总 3 条；
+- **周一值日提醒**：每周一到达提醒时间后发送本周值日组与成员，每周最多一次。
+
+配置字段：`notifyDaily`（每日简报，默认 `false`）、`notifyTime`（提醒时间，默认 `07:30`，本地 `HH:mm`）、
+`notifyDue`（截止提醒，默认 `false`）、`notifyDueLead`（提前分钟，默认 `10`，范围 0–120）、
+`notifyDuty`（周一值日提醒，默认 `false`）。
+
+去重状态按天 / 周 / 每条事务记录在 `notify.v1`，与业务数据 `board.v1` 分开；插件重启后不会重复发送。
+通知通过宿主 `ctx.notify` 发送，**只在 Aurora 运行时生效**：不是系统级后台常驻提醒，插件不常驻后台，
+Aurora 退出期间也不会补发；通知内容全部来自本地数据，不联网。
 
 ## 平台特性与边界（Aurora 0.5.2）
 

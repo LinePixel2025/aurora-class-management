@@ -1,7 +1,7 @@
 {
   "id": "com.classmanagement.board",
   "name": "班级事务台",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "apiVersion": 1,
   "minAuroraVersion": "0.5.2",
   "description": "2 张桌面浮窗显示班级速览/本周值日与今日事务/本周安排，并提供 4 视图管理台与一整套 Agent 工具。",
@@ -20,7 +20,8 @@
     "config",
     "logging",
     "ui.panels",
-    "ui.widgets"
+    "ui.widgets",
+    "notifications"
   ],
   "contributes": {
     "tools": [
@@ -618,6 +619,45 @@
         "label": "浮窗显示已完成事务",
         "type": "boolean",
         "description": "打开后「今日事务」浮窗会同时显示今天已完成的事务",
+        "default": false
+      },
+      {
+        "key": "notifyDaily",
+        "label": "每日简报",
+        "type": "boolean",
+        "description": "每天在提醒时间发送今日事务与本周值日摘要",
+        "default": false
+      },
+      {
+        "key": "notifyTime",
+        "label": "提醒时间",
+        "type": "text",
+        "description": "本地时间 HH:mm；每日简报与周一值日提醒使用",
+        "default": "07:30",
+        "placeholder": "07:30"
+      },
+      {
+        "key": "notifyDue",
+        "label": "截止提醒",
+        "type": "boolean",
+        "description": "今天的事务在截止前提醒",
+        "default": false
+      },
+      {
+        "key": "notifyDueLead",
+        "label": "提前分钟",
+        "type": "number",
+        "description": "截止前多少分钟提醒",
+        "default": 10,
+        "min": 0,
+        "max": 120,
+        "step": 5
+      },
+      {
+        "key": "notifyDuty",
+        "label": "周一值日提醒",
+        "type": "boolean",
+        "description": "每周一在提醒时间发送本周值日组",
         "default": false
       }
     ]

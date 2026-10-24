@@ -16,6 +16,7 @@ const { pushAll, pushPanel } = require('./lib/push')
 const { WIDGET_IDS, PANEL_ID } = require('./lib/push')
 const { widgetSchema } = require('./lib/widgets')
 const { renderPanel, handlePanelAction } = require('./lib/panel')
+const { checkNotifications } = require('./lib/notify')
 
 let ticker = null
 let lastDayKey = ''
@@ -175,7 +176,13 @@ module.exports = {
       void tick(ctx).catch((error) => {
         ctx.log('warn', '跨天刷新失败', { error: String(error) })
       })
+      void checkNotifications(ctx).catch((error) => {
+        ctx.log('warn', '通知检查失败', { error: String(error) })
+      })
     }, 60 * 1000)
+    void checkNotifications(ctx).catch((error) => {
+      ctx.log('warn', '通知检查失败', { error: String(error) })
+    })
   },
 
   async deactivate() {
@@ -282,6 +289,7 @@ module.exports = {
     setNow: setNowForTests,
     resetNow: resetNowForTests,
     tick: async (ctx) => tick(ctx),
+    checkNotifications: async (ctx) => checkNotifications(ctx),
     renderPanel: async (ctx) => renderPanel(ctx),
     purgeHistory: async (ctx) => ops.purgeTaskHistory(ctx),
     widgetSchema,

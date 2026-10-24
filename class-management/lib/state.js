@@ -251,6 +251,13 @@ function readSettings(config) {
     teacher: clip(source.teacher, LIMITS.maxTeacher),
     termStartDate,
     showCompleted: source.showCompleted === true,
+    notifyDaily: source.notifyDaily === true,
+    notifyTime: normalizeTime(source.notifyTime) || '07:30',
+    notifyDue: source.notifyDue === true,
+    notifyDueLead: Number.isFinite(Number(source.notifyDueLead))
+      ? Math.min(120, Math.max(0, Math.trunc(Number(source.notifyDueLead))))
+      : 10,
+    notifyDuty: source.notifyDuty === true,
   }
 }
 
