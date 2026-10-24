@@ -1342,6 +1342,7 @@ async function mainTest() {
       })
       assertEqual(added.toast, '已添加事务')
       assertPushInvariants(env, before, '面板 add-task')
+      assertEqual(pushCount(env) - before, 4, '面板动作应推送 2 个面板 + 2 个浮窗')
       validateSchema('面板添加事务后', added.schema)
       const overview = await invokeTool(env, 'get_overview', {})
       assert(overview.content.includes('面板添加的事务'), '面板添加未落盘')

@@ -33,7 +33,7 @@ const {
   dueLabel,
 } = require('./ops')
 const { parseDutyGroupsText, parseOrderText } = require('./duty')
-const { pushWidgets } = require('./push')
+const { pushAll } = require('./push')
 
 const PANEL_ID = 'board'
 
@@ -761,7 +761,7 @@ async function handlePanelAction(panelId, method, params, ctx) {
         dueTime: due.dueTime,
       })
       await bumpFormRev(ctx)
-      await pushWidgets(ctx, 'panel-add-task')
+      await pushAll(ctx, 'panel-add-task')
       return afterChange(ctx, '已添加事务')
     }
     if (name === 'toggle-task') {
@@ -771,7 +771,7 @@ async function handlePanelAction(panelId, method, params, ctx) {
       if (task === undefined) throw new DataError('这条事务已不存在，请刷新面板')
       await updateTask(ctx, { id, done: !task.done })
       await bumpFormRev(ctx)
-      await pushWidgets(ctx, 'panel-toggle-task')
+      await pushAll(ctx, 'panel-toggle-task')
       return afterChange(ctx, task.done ? '已恢复为待办' : '已完成')
     }
     if (name === 'update-task') {
@@ -797,7 +797,7 @@ async function handlePanelAction(panelId, method, params, ctx) {
       if (Object.keys(patch).length <= 1) throw new DataError('没有要修改的内容')
       await updateTask(ctx, patch)
       await bumpFormRev(ctx)
-      await pushWidgets(ctx, 'panel-update-task')
+      await pushAll(ctx, 'panel-update-task')
       return afterChange(ctx, '事务已更新')
     }
     if (name === 'delete-task') {
@@ -808,7 +808,7 @@ async function handlePanelAction(panelId, method, params, ctx) {
       await deleteTask(ctx, { id })
       await saveUi(ctx, { editingTaskId: '' })
       await bumpFormRev(ctx)
-      await pushWidgets(ctx, 'panel-delete-task')
+      await pushAll(ctx, 'panel-delete-task')
       return afterChange(ctx, '已删除事务')
     }
     if (name === 'add-schedule') {
@@ -821,7 +821,7 @@ async function handlePanelAction(panelId, method, params, ctx) {
         weekOffset: offset,
       })
       await bumpFormRev(ctx)
-      await pushWidgets(ctx, 'panel-add-schedule')
+      await pushAll(ctx, 'panel-add-schedule')
       return afterChange(ctx, '已添加安排')
     }
     if (name === 'update-schedule') {
@@ -841,7 +841,7 @@ async function handlePanelAction(panelId, method, params, ctx) {
       if (Object.keys(patch).length <= 2) throw new DataError('没有要修改的内容')
       await updateSchedule(ctx, patch)
       await bumpFormRev(ctx)
-      await pushWidgets(ctx, 'panel-update-schedule')
+      await pushAll(ctx, 'panel-update-schedule')
       return afterChange(ctx, '安排已更新')
     }
     if (name === 'delete-schedule') {
@@ -851,7 +851,7 @@ async function handlePanelAction(panelId, method, params, ctx) {
       if (entry === undefined) throw new DataError('这条安排已不存在，请刷新面板')
       await deleteSchedule(ctx, { id, weekOffset: offset })
       await bumpFormRev(ctx)
-      await pushWidgets(ctx, 'panel-delete-schedule')
+      await pushAll(ctx, 'panel-delete-schedule')
       return afterChange(ctx, '已删除安排')
     }
     if (name === 'save-duty-week') {
@@ -864,7 +864,7 @@ async function handlePanelAction(panelId, method, params, ctx) {
         weekOffset: offset,
       })
       await bumpFormRev(ctx)
-      await pushWidgets(ctx, 'panel-duty-week')
+      await pushAll(ctx, 'panel-duty-week')
       return afterChange(ctx, '本周轮换已保存')
     }
     if (name === 'save-duty-groups') {
@@ -879,7 +879,7 @@ async function handlePanelAction(panelId, method, params, ctx) {
         ...(order.length > 0 ? { order } : {}),
       })
       await bumpFormRev(ctx)
-      await pushWidgets(ctx, 'panel-duty-groups')
+      await pushAll(ctx, 'panel-duty-groups')
       return afterChange(ctx, '值日分组已保存')
     }
     if (name === 'save-announcement') {
@@ -887,7 +887,7 @@ async function handlePanelAction(panelId, method, params, ctx) {
       const text = typed === undefined ? data.announcement : typed
       await setAnnouncement(ctx, { text, weekOffset: offset })
       await bumpFormRev(ctx)
-      await pushWidgets(ctx, 'panel-announcement')
+      await pushAll(ctx, 'panel-announcement')
       return afterChange(ctx, '通知已保存')
     }
     if (name === 'clear-scope') {
@@ -896,7 +896,7 @@ async function handlePanelAction(panelId, method, params, ctx) {
         : 'tasks'
       const result = await clearScope(ctx, scope, offset)
       await bumpFormRev(ctx)
-      await pushWidgets(ctx, 'panel-clear-scope')
+      await pushAll(ctx, 'panel-clear-scope')
       const removed = result.removed.tasks + result.removed.schedule + result.removed.duty
       return afterChange(ctx, removed > 0 ? '已清理所选数据' : '所选范围没有数据')
     }
@@ -904,7 +904,7 @@ async function handlePanelAction(panelId, method, params, ctx) {
       if (offset !== 0) throw new DataError('请先回到本周，再写入示例周')
       await loadDemo(ctx)
       await bumpFormRev(ctx)
-      await pushWidgets(ctx, 'panel-demo')
+      await pushAll(ctx, 'panel-demo')
       return afterChange(ctx, '示例数据已写入')
     }
     if (name === '' || name === 'refresh' || name === 'event') {
