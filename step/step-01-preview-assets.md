@@ -62,7 +62,7 @@ Aurora 0.5.2 更换了 widget CSS 的构建哈希，当前 `dev/preview.mjs` 硬
   - 新增 `walkAsarFiles` / `listAsarFiles(asarPath, parts = ['out','renderer','assets'])`，递归列出 asar 内资源路径；
   - 新增 `findAsset(asarPath, pattern, label)`，按正则匹配资源名，找不到时抛错并列出已见资源（不回退旧哈希）；
   - `mainRun()` 中 4 处硬编码资源读取改为 `findAsset` 模式匹配：`theme-*.css`、`PluginSchemaRenderer-*.css`、`widget-*.css`、`PluginPageFrame-*.css`；保留 `readAsarEntry` 与字体提取逻辑。
-- 与计划核对：本机 0.5.2 `app.asar` 共 200 个文件，`out/renderer/assets/` 下匹配到 `theme-BXOgGZMN.css`、`PluginSchemaRenderer-B9w_IhaU.css`、`widget-CG0kUrlE.css`、`PluginPageFrame-Cq1k62Fi.css`，与计划列出的实际资源一致。
+- 与计划核对：本机 0.5.2 `app.asar` 的 `out/` 子树共 200 个文件（全包约 2701 个），`out/renderer/assets/` 下匹配到 `theme-BXOgGZMN.css`、`PluginSchemaRenderer-B9w_IhaU.css`、`widget-CG0kUrlE.css`、`PluginPageFrame-Cq1k62Fi.css`，与计划列出的实际资源一致。
 - 验证命令与结果：
   - `node dev/preview.mjs` → 退出码 0，11 个 HTML + 11 张 PNG 全部生成（✓），输出无“app.asar 中缺少预览所需的样式文件”；
   - `Get-ChildItem dev/.cache -Filter *.png | Measure-Object` → Count 14（本次生成 11 张 + 3 张历史残留：`aurora-mark-*.png` ×2、`panel-notice-dark.png`），`widgets-dark.png` / `panel-board-full-dark.png` / `panel-board-edit-dark.png` 均存在；

@@ -542,6 +542,42 @@ function taskByText(env, text) {
   return allTasksOf(env).find((task) => task.text === text) || null
 }
 
+/** 构造可直接写进 `board.v1` 的种子事务（绕过工具层，用于容量 / 边界测试）。 */
+function seedTask(id, date, text) {
+  return {
+    id,
+    text,
+    done: false,
+    date,
+    priority: 'normal',
+    category: '事务',
+    dueDate: '',
+    dueTime: '',
+    assignee: '',
+    createdAt: '2026-10-19T00:00:00.000Z',
+  }
+}
+
+function seedWeek(tasks) {
+  return { duty: {}, tasks, schedule: [], announcement: '', updatedAt: '2026-10-19T00:00:00.000Z' }
+}
+
+/** 目标周（2026-10-26 那周）已塞满 80 条事务、源周有 1 条待移动事务的种子板。 */
+function capacityBoard() {
+  const fullWeekTasks = Array.from({ length: 80 }, (_, index) =>
+    seedTask(`tfill${index + 1}`, '2026-10-26', `目标周填充 ${index + 1}`),
+  )
+  return {
+    version: stateLib.BOARD_VERSION,
+    anchorMonday: '2026-10-19',
+    duty: { groups: stateLib.seedGroups(), order: ['g1', 'g2', 'g3', 'g4'] },
+    weeks: {
+      '2026-10-19': seedWeek([seedTask('tmove', '2026-10-21', '容量移动源事务')]),
+      '2026-10-26': seedWeek(fullWeekTasks),
+    },
+  }
+}
+
 /** 固定时钟 + 未激活的 context：避免 activate 立即补发通知污染“只发一次”断言。 */
 function atTime(date, config) {
   main.__test.setNow(date.getTime())
@@ -936,8 +972,11 @@ async function mainTest() {
       assertEqual(badDate.isError, true)
       const badTaskDate = await invokeTool(env, 'add_task', { text: '测试', date: '2026-02-31' })
       assertEqual(badTaskDate.isError, true)
-      const badPriority = await invokeTool(env, 'add_task', { text: '测试', priority: 'urgent' })
-      assert(badPriority.content.length > 0)
+      const badPriority = await invokeTool(env, 'add_task', { text: '非法优先级事务', priority: 'urgent' })
+      assertEqual(badPriority.isError, undefined, '非法优先级应按 normal 归一化而不是报错')
+      const normalized = taskByText(env, '非法优先级事务')
+      assert(normalized !== null, '非法优先级事务未写入')
+      assertEqual(normalized.priority, 'normal', '非法优先级应归一化为 normal')
       const missing = await invokeTool(env, 'update_task', { id: 't-not-exist' })
       assertEqual(missing.isError, true)
       const unknown = await invokeTool(env, 'no_such_tool', {})
@@ -1162,6 +1201,18 @@ async function mainTest() {
     await checkNotifications(env)
     assertEqual(env.notifications.length, 1, '重复调用不应重复发送每日简报')
   })
+  await test('每日简报跨天重新提醒（第二天再发一条）', async () => {
+    const env = atTime(new Date(2026, 9, 21, 7, 31, 0, 0), { notifyDaily: true }) // 周三 07:31
+    await checkNotifications(env)
+    assertEqual(env.notifications.length, 1, '当天首次检查应发一条每日简报')
+    main.__test.setNow(new Date(2026, 9, 22, 7, 31, 0, 0).getTime()) // 周四 07:31
+    await checkNotifications(env)
+    assertEqual(env.notifications.length, 2, '跨天后应重新发送每日简报')
+    assertEqual(env.notifications[1].title, '今日班级事务')
+    main.__test.setNow(new Date(2026, 9, 22, 7, 40, 0, 0).getTime())
+    await checkNotifications(env)
+    assertEqual(env.notifications.length, 2, '同一天内仍不应重复发送每日简报')
+  })
   await test('截止提醒：未到提醒点不发，到时只发一次', async () => {
     const env = atTime(new Date(2026, 9, 21, 7, 49, 0, 0), { notifyDue: true, notifyDueLead: 10 })
     await addTask(env, { text: '交英语作业', dueTime: '08:00' }) // 提前 10 分钟 = 07:50
@@ -1197,12 +1248,39 @@ async function mainTest() {
   })
   await test('多条同时到点的截止任务合并为一条摘要', async () => {
     const env = atTime(new Date(2026, 9, 21, 7, 55, 0, 0), { notifyDue: true, notifyDueLead: 10 })
-    for (const text of ['交数学作业', '交英语作业', '交物理作业']) {
+    const texts = ['交数学作业', '交英语作业', '交物理作业']
+    for (const text of texts) {
       await addTask(env, { text, dueTime: '08:00' })
     }
     await checkNotifications(env)
     assertEqual(env.notifications.length, 1, '多条任务应合并成一条摘要，而不是逐条发送')
     assertEqual(env.notifications[0].title, '事务即将截止')
+    for (const text of texts) {
+      assert(env.notifications[0].body.includes(text), `截止摘要缺少「${text}」：${env.notifications[0].body}`)
+    }
+  })
+  await test('截止提醒摘要最多汇总 3 条，第 4 条下个检查补发', async () => {
+    const env = atTime(new Date(2026, 9, 21, 7, 55, 0, 0), { notifyDue: true, notifyDueLead: 10 })
+    const texts = ['摘要事务 A', '摘要事务 B', '摘要事务 C', '摘要事务 D']
+    const times = ['08:00', '08:01', '08:02', '08:03']
+    for (let index = 0; index < texts.length; index += 1) {
+      await addTask(env, { text: texts[index], dueTime: times[index] })
+    }
+    await checkNotifications(env)
+    assertEqual(env.notifications.length, 1, '同一轮到点任务应合并为一条摘要')
+    const first = env.notifications[0]
+    assertEqual(first.title, '事务即将截止')
+    for (const text of texts.slice(0, 3)) {
+      assert(first.body.includes(text), `首条摘要应包含前 3 条事务「${text}」：${first.body}`)
+    }
+    assert(!first.body.includes(texts[3]), `首条摘要最多 3 条，不应包含第 4 条：${first.body}`)
+    await checkNotifications(env)
+    assertEqual(env.notifications.length, 2, '第 4 条应在下一轮检查补发')
+    const second = env.notifications[1]
+    assert(second.body.includes(texts[3]), `补发摘要应包含第 4 条：${second.body}`)
+    for (const text of texts.slice(0, 3)) {
+      assert(!second.body.includes(text), `已提醒的事务不应重复汇总「${text}」：${second.body}`)
+    }
   })
   await test('周一值日提醒本周只发一次', async () => {
     const env = atTime(new Date(2026, 9, 19, 7, 31, 0, 0), { notifyDuty: true }) // 周一 07:31
@@ -1216,6 +1294,19 @@ async function mainTest() {
     )
     await checkNotifications(env)
     assertEqual(env.notifications.length, 1, '重复调用不应重复发送值日提醒')
+  })
+  await test('周一值日提醒跨周重新提醒（下周一再发一条）', async () => {
+    const env = atTime(new Date(2026, 9, 19, 7, 31, 0, 0), { notifyDuty: true }) // 周一 07:31
+    await checkNotifications(env)
+    assertEqual(env.notifications.length, 1, '首个周一到时应发一条本周值日提醒')
+    assertEqual(env.notifications[0].title, '本周值日')
+    main.__test.setNow(new Date(2026, 9, 26, 7, 31, 0, 0).getTime()) // 下周一 07:31
+    await checkNotifications(env)
+    assertEqual(env.notifications.length, 2, '进入下一周后应重新发送值日提醒')
+    assertEqual(env.notifications[1].title, '本周值日')
+    main.__test.setNow(new Date(2026, 9, 28, 7, 31, 0, 0).getTime()) // 下周三
+    await checkNotifications(env)
+    assertEqual(env.notifications.length, 2, '同一周内（非周一）不应重复发送值日提醒')
   })
   await test('非周一不发值日提醒', async () => {
     const env = atTime(new Date(2026, 9, 20, 7, 31, 0, 0), { notifyDuty: true }) // 周二
@@ -1805,6 +1896,143 @@ async function mainTest() {
     })
   })
 
+  header('班级周历推送与写保护')
+  await withEnv({}, async (env) => {
+    await test('周历写动作成功后推送 4 条；load 不推送', async () => {
+      const before = pushCount(env)
+      const added = await invokeCalendar(env, 'add-task', {
+        date: '2026-10-21',
+        text: '周历推送校验',
+        weekOffset: 0,
+      })
+      expectCalendarOk(added, 'calendar add-task 推送')
+      assertEqual(pushCount(env) - before, 4, '周历写动作应推送 2 个面板 + 2 个浮窗')
+      const slice = assertPushAllSlice(env, before, '周历 add-task 推送')
+      assertEqual(slice.filter((push) => push.panelId === PANEL_ID).length, 1, '应恰好推送 1 次 board')
+      assertEqual(
+        slice.filter((push) => push.panelId === CALENDAR_PANEL_ID).length,
+        1,
+        '应恰好推送 1 次 calendar',
+      )
+      assertEqual(slice.filter((push) => push.widgetId !== undefined).length, 2, '应推送 2 个浮窗')
+
+      const afterWrite = pushCount(env)
+      const loaded = await invokeCalendar(env, 'load', { weekOffset: 0 })
+      expectCalendarOk(loaded, 'calendar load 不推送')
+      assertEqual(pushCount(env), afterWrite, 'load 不应产生推送')
+    })
+
+    await test('dueLabel：未来日期只填时间按事务日期解释，今天仍显示今天', async () => {
+      await addTask(env, { text: '周五只填时间', date: '2026-10-23', dueTime: '18:00' })
+      await addTask(env, { text: '今天只填时间', dueTime: '18:00' })
+      const data = await loadCalendar(env)
+      const friday = calendarTaskByText(data, '周五只填时间')
+      assert(friday !== null, '找不到周五事务')
+      assertEqual(friday.dueDate, '', '前置条件：该事务不应有 dueDate')
+      assertEqual(friday.dueLabel, '周五 18:00', `周五事务 dueLabel 错误：${friday.dueLabel}`)
+      assert(!friday.dueLabel.includes('今天'), '周五事务不应显示今天')
+      const today = calendarTaskByText(data, '今天只填时间')
+      assert(today !== null, '找不到今天事务')
+      assertEqual(today.dueLabel, '今天 18:00', `今天事务 dueLabel 错误：${today.dueLabel}`)
+    })
+  })
+
+  await withEnv({}, async (env) => {
+    await test('过去周只读：set-duty-week 与 add-task 被拒且不落盘、不推送', async () => {
+      const before = pushCount(env)
+      const duty = await invokeCalendar(env, 'set-duty-week', {
+        groupName: '第1组',
+        note: '过去周备注',
+        weekOffset: -1,
+      })
+      expectCalendarError(duty, '过去周 set-duty-week')
+      assert(duty.error.includes('过去周只读'), `过去周写保护提示不明确：${duty.error}`)
+      assertEqual(pushCount(env), before, '被拒绝的过去周写不应推送')
+
+      const added = await invokeCalendar(env, 'add-task', {
+        date: '2026-10-21',
+        text: '过去周不应写入',
+        weekOffset: -1,
+      })
+      expectCalendarError(added, '过去周 add-task')
+      assert(added.error.includes('过去周只读'), `过去周 add-task 提示不明确：${added.error}`)
+      assertEqual(pushCount(env), before, '过去周 add-task 不应推送')
+
+      const past = await loadCalendar(env, { weekOffset: -1 })
+      assert(!String(past.duty.note ?? '').includes('过去周备注'), '过去周值日备注不应落盘')
+      assertEqual(calendarTaskByText(past, '过去周不应写入'), null, '过去周 add-task 不应写入历史周')
+      const current = await loadCalendar(env, { weekOffset: 0 })
+      assertEqual(calendarTaskByText(current, '过去周不应写入'), null, '过去周 add-task 不应写入本周')
+    })
+
+    await test('非法 weekOffset：load 返回 error，写动作被拒且不落盘', async () => {
+      const loaded = await invokeCalendar(env, 'load', { weekOffset: 99 })
+      expectCalendarError(loaded, '非法 weekOffset load')
+      assert(loaded.error.includes('12'), `越界 weekOffset 提示不明确：${loaded.error}`)
+
+      const before = pushCount(env)
+      const added = await invokeCalendar(env, 'add-task', {
+        weekOffset: 99,
+        date: '2026-10-21',
+        text: '不应写入',
+      })
+      expectCalendarError(added, '非法 weekOffset add-task')
+      assert(added.error.includes('12'), `越界 weekOffset 写提示不明确：${added.error}`)
+      assertEqual(pushCount(env), before, '非法 weekOffset 写动作不应推送')
+      const data = await loadCalendar(env)
+      assertEqual(calendarTaskByText(data, '不应写入'), null, '非法 weekOffset 不应写入事务')
+    })
+  })
+
+  await withSeededEnv({ 'board.v1': capacityBoard() }, async (env) => {
+    await test('move-task：目标周已满 80 条时拒绝跨周移动', async () => {
+      const before = pushCount(env)
+      const result = await invokeCalendar(env, 'move-task', {
+        id: 'tmove',
+        date: '2026-10-27',
+        weekOffset: 0,
+      })
+      expectCalendarError(result, 'move-task 目标周容量已满')
+      assert(result.error.includes('上限'), `容量已满提示不明确：${result.error}`)
+      assertEqual(pushCount(env), before, '失败的移动不应推送')
+      const source = await loadCalendar(env, { weekOffset: 0 })
+      const kept = calendarTaskById(source, 'tmove')
+      assert(kept !== null, '目标周已满时源周事务不应丢失')
+      assertEqual(kept.date, '2026-10-21', '目标周已满时源周事务日期不应被改写')
+      const target = await loadCalendar(env, { weekOffset: 1 })
+      const targetCount = target.days.reduce((sum, day) => sum + day.tasks.length, 0)
+      assertEqual(targetCount, 80, '目标周事务数不应变化')
+    })
+
+    await test('move-task：超过 +12 周拒绝且不移动', async () => {
+      const result = await invokeCalendar(env, 'move-task', {
+        id: 'tmove',
+        date: '2027-03-01',
+        weekOffset: 0,
+      })
+      expectCalendarError(result, 'move-task 超出 12 周')
+      assert(result.error.includes('12'), `超出范围提示不明确：${result.error}`)
+      const source = await loadCalendar(env, { weekOffset: 0 })
+      const kept = calendarTaskById(source, 'tmove')
+      assert(kept !== null, '超范围移动不应丢失事务')
+      assertEqual(kept.date, '2026-10-21', '超范围移动不应改写事务日期')
+    })
+
+    await test('move-task：非法日期格式拒绝且不移动', async () => {
+      const result = await invokeCalendar(env, 'move-task', {
+        id: 'tmove',
+        date: '2026/10/22',
+        weekOffset: 0,
+      })
+      expectCalendarError(result, 'move-task 非法日期格式')
+      assert(result.error.includes('格式'), `非法日期提示不明确：${result.error}`)
+      const source = await loadCalendar(env, { weekOffset: 0 })
+      const kept = calendarTaskById(source, 'tmove')
+      assert(kept !== null, '非法日期移动不应丢失事务')
+      assertEqual(kept.date, '2026-10-21', '非法日期移动不应改写事务日期')
+    })
+  })
+
   header('页面型周历')
   await test('页面三文件存在且非空', async () => {
     for (const file of PAGE_FILES) readPageFile(file)
@@ -1822,10 +2050,16 @@ async function mainTest() {
     assert(!/https?:\/\//i.test(html), 'calendar.html 不应包含 http:// 或 https:// 外链')
     assert(!/<[^>]*\son[a-z]+\s*=/i.test(html), 'calendar.html 不应包含 on* 内联事件属性')
   })
-  await test('calendar.js 通过 auroraPlugin.request/onEvent 通信且不含 fetch/eval', async () => {
+  await test('calendar.js 以 listener 形式订阅事件，通信合法且不含 fetch/eval', async () => {
     const js = readPageFile('ui/calendar.js')
     assert(js.includes('auroraPlugin.request'), 'calendar.js 缺少 auroraPlugin.request')
     assert(js.includes('auroraPlugin.onEvent'), 'calendar.js 缺少 auroraPlugin.onEvent')
+    // 宿主 preload 的签名是 onEvent(listener(event, payload))；字符串首参 + handler 的旧写法不会生效。
+    assert(
+      /onEvent\(\s*function\s*\(/.test(js) || /onEvent\(\s*\([^)]*\)\s*=>/.test(js),
+      'calendar.js 未以 listener 形式调用 auroraPlugin.onEvent',
+    )
+    assert(!/onEvent\(\s*['"]/.test(js), 'calendar.js 不应使用 onEvent("board.changed", handler) 字符串首参形式')
     assert(!/\bfetch\s*\(/.test(js), 'calendar.js 不应调用 fetch(')
     assert(!/\beval\s*\(/.test(js), 'calendar.js 不应调用 eval(')
   })
@@ -1932,7 +2166,8 @@ async function mainTest() {
       env.ctx.config.className = '高二(16)班'
       main.onConfigChanged(env.ctx.config, env.ctx)
       await new Promise((resolve) => setTimeout(resolve, 0))
-      assert(pushCount(env) - before >= 3, '配置变化未推送')
+      assertEqual(pushCount(env) - before, 4, '配置变化应推送 2 个面板 + 2 个浮窗')
+      assertPushAllSlice(env, before, '配置变化推送')
       main.__test.setNow(BASE_NOW.getTime())
       const widget = await refreshWidget(env, 'week-overview')
       assert(JSON.stringify(widget.schema).includes('高二(16)班'), '班级名未更新')

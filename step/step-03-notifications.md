@@ -88,7 +88,7 @@
   - `class-management/manifest.json`：version 1.3.0、`permissions` 增加 `notifications`、`config.fields` 追加 5 个通知字段（默认全关 / `07:30` / 10 分钟 / 0–120）。
   - `class-management/lib/state.js`：`readSettings` 增加 5 个通知字段的读取与净化（`notifyTime` 非法回退 07:30；`notifyDueLead` 截断 0–120、0 合法）。
   - `class-management/main.js`：引入 `checkNotifications`；60 秒定时器内 `tick` 与 `checkNotifications` 各自独立 catch；激活后立即补发一次；`__test.checkNotifications` 暴露给测试。
-  - `dev/test-plugin.mjs`：mock `notify` 记录通知并支持返回 false；清单断言更新（1.3.0 / notifications / 9 个配置字段）；新增「通知与定时提醒」14 条测试（全关不发不写、每日/截止/周一各一次、`notifyDueLead=0` 边界、多任务合并、非法配置回退、明天截止不提醒、**08:05 不提醒 08:00 截止**、**昨天登记今天截止仍提醒**、notify false 记 warn、重启不重复、activate 补发不重复）。
+  - `dev/test-plugin.mjs`：mock `notify` 记录通知并支持返回 false；清单断言更新（1.3.0 / notifications / 9 个配置字段）；新增「通知与定时提醒」12 条测试（审查修复 `5f47d77` 再补 2 条，合计 14 条）（全关不发不写、每日/截止/周一各一次、`notifyDueLead=0` 边界、多任务合并、非法配置回退、明天截止不提醒、**08:05 不提醒 08:00 截止**、**昨天登记今天截止仍提醒**、notify false 记 warn、重启不重复、activate 补发不重复）。
   - `README.md` / `class-management/README.md`：权限列表加 `notifications`；新增「系统通知（可选）」小节（三类行为、5 字段默认值、`notify.v1` 去重、仅 Aurora 运行时生效/不常驻后台/不联网）；插件 README 版本 1.3.0、目录补 `lib/notify.js`；验证段测试数 71/71、宿主校验器 0.5.2。
 - 子代理分片与结果（4 个并行分片，写范围互不重叠）：
   - A `lib/notify.js`：完成；自测 10/10（全关不读不写、三类通知各一次、notify false/抛错不重复、lead=0 边界）。

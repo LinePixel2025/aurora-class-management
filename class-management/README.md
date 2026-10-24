@@ -135,7 +135,7 @@
   声明式事务台与页面型班级周历复用同一份数据，页面不新增存储键。
 - 事务带 `date`，界面只显示今天；旧事务保留最近 7 天（今天 + 前 6 天），之后自动清理。
 - 单值上限 240 KB（宿主上限 256 KB）；每周事务 ≤ 80、安排 ≤ 60，最多保留 40 周，超限会先修剪最旧周。
-- 事件推送固定为 `board.changed`：`pushAll` 一次发送 2 个面板 + 2 张浮窗共 4 条，低于宿主单次 5 条上限。
+- 事件推送固定为 `board.changed`：`pushAll` 一次发送 2 个面板 + 2 张浮窗共 4 条（2 面板 + 2 浮窗），符合本项目自设单次 ≤5 条；宿主实际限速 20 条/秒、payload ≤64 KB。
 - 设置 → 插件 → 班级事务台 可改：班级名称、班主任、学期起始日期（第 1 周周一，留空则以首次运行所在周为第 1 周）、
   今日事务浮窗是否显示已完成事务、三类系统通知的开关与提醒时间（见「系统通知」）。
 - 不联网、不读写用户文件、不读取 Aurora 凭据。
@@ -181,7 +181,7 @@ README.md                  本说明（随插件包发布）
 
 ```powershell
 node plugin-dev-kit/tools/check-plugin.mjs class-management   # 清单 / 权限 / schema 静态校验（v2.0.0）
-node dev/test-plugin.mjs                                      # 离线全链路测试（mock 宿主 + 宿主 schema 校验器，88/88）
+node dev/test-plugin.mjs                                      # 离线全链路测试（mock 宿主 + 宿主 schema 校验器，98/98）
 node dev/preview.mjs                                          # 生成浮窗 / 面板预览与截图（dev/.cache）
 node dev/preview-calendar.mjs                                 # 生成页面型「班级周历」预览与截图（dev/.cache）
 powershell -ExecutionPolicy Bypass -File scripts/build.ps1    # 校验 + 测试 + 打 zip
@@ -194,7 +194,7 @@ powershell -ExecutionPolicy Bypass -File scripts/build.ps1    # 校验 + 测试 
 注入只读 mock `window.auroraPlugin` 后交给本机 Chrome / Edge headless 截图；产物只写在 `dev/.cache/`，
 不随插件包发布。
 
-当前离线验证：`check-plugin.mjs` 通过（v2.0.0，2 面板 / 3 命令），`dev/test-plugin.mjs` **88/88 通过**。
+当前离线验证：`check-plugin.mjs` 通过（v2.0.0，2 面板 / 3 命令），`dev/test-plugin.mjs` **98/98 通过**。
 
 ### 已知平台特性（Aurora 0.5.2）
 

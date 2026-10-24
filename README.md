@@ -29,7 +29,7 @@ class-management/                 插件包（zip 根目录）
   lib/calendar.js                 周历后端：7 天数据与事务 / 安排 / 值日 / 通知动作
   lib/notify.js                   可选系统通知与去重状态（notify.v1）
   ui/calendar.html|css|js         页面型班级周历（第二面板 /calendar，运行在宿主沙箱）
-Releases                          v2.0.0 安装包附件（本地构建输出到 dist/class-management-2.0.0.zip）
+GitHub Releases（安装包附件，仓库外）  v2.0.0 安装包；本地构建输出 dist/class-management-2.0.0.zip（已 gitignore）
 dev/test-plugin.mjs               离线全链路测试（mock 宿主 + 宿主原版 schema 校验器）
 dev/preview.mjs                   用宿主 CSS 生成浮窗 / 面板预览与截图
 dev/preview-calendar.mjs          页面型周历预览与截图（合成页面 + mock auroraPlugin）
@@ -125,11 +125,11 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 当前离线验证结果：
 
 - `check-plugin.mjs`：通过（`com.classmanagement.board` v2.0.0，2 个面板、3 条命令；工具包不随仓库发布，需本地自备）；
-- `dev/test-plugin.mjs`：**88/88 项检查通过**；
+- `dev/test-plugin.mjs`：**98/98 项检查通过**；
   覆盖时间/周次、存储读取、串行并发写、2 个浮窗、12 个工具、4 个管理台视图与全部编辑动作、每日清空与 7 天历史、整周值日轮换、页面型周历（页面静态约束 / 7 天 load / 事务与安排动作 / 拖动 / 过去周只读 / 命令接线）、命令、推送目标/条数（2 面板 + 2 浮窗 = 4 条）、可选系统通知（三类通知的开关 / 提醒时间 / 去重 / 重启后不重发）、整周计划失败回滚、跨天/跨周刷新、旧数据迁移、容量修剪；
 - 所有静态与动态 schema 均通过 **Aurora 0.5.2 宿主原版** `validatePanelSchema`；清单同时通过从本机 Aurora 提取的宿主原版 zod `parsePluginManifest`；
 - `node dev/preview.mjs` / `node dev/preview-calendar.mjs`：分别生成浮窗、面板与周历预览图到 `dev/.cache/`（周历为 `calendar-preview*.png`），README 配图由这些图拷入 `docs/images/`；
-- `dist/class-management-2.0.0.zip`：72.4 KB，SHA-256 `19A3ED666E7F7E3FC99DE460756FA3D5894DA37DE8BDA8A0D10B448D0847FC6E`，manifest 在 zip 根，条目使用正斜杠，无 `node_modules`。
+- `dist/class-management-2.0.0.zip`：73.2 KB，SHA-256 `574B2C8D321E1C390C9B46D6FD446DCDEFC1FF3CDD8D1C2649EFC2E3D62DBC94`，manifest 在 zip 根，条目使用正斜杠，无 `node_modules`。
 
 真机验收清单（需要你在 Aurora 里点一遍）：
 
@@ -195,7 +195,7 @@ Aurora 退出期间也不会补发；通知内容全部来自本地数据，不�
 - **页面型周历也在宿主沙箱里**：`/calendar` 页面只通过 `window.auroraPlugin.request` / `onEvent` 与宿主通信，
   页面无内联脚本、无 CDN、无 `fetch`。
 - **推送目标有限**：一次业务变更向 2 个面板（`board` / `calendar`）+ 2 个桌面浮窗各推 1 条 `board.changed`，共 4 条，
-  低于宿主单次 5 条上限。
+  符合本项目自设的单次 ≤5 条；宿主实际限速 20 条/秒、payload ≤64 KB。
 - 单插件最多 **4 个小组件**，本项目使用 2 个；提示条（edge-bar）是另一种槽位，本项目未使用。
 - 宿主 `PluginSchemaRenderer` 的 `row` / `grid` 会把子节点再包进一个纵向 `.plugin-schema`，实际按列渲染。
   因此本项目全部单列排版：视图/周切换用「下拉框 + 应用按钮」，事务用「点条目展开编辑卡片」。

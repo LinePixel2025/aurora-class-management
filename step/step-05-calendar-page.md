@@ -126,7 +126,7 @@
   - `node plugin-dev-kit/tools/check-plugin.mjs class-management` → 退出码 0，`✓ 清单通过：…v2.0.0`（2 面板、3 命令）；
   - `node dev/test-plugin.mjs` → **88/88** 通过；
   - `node --check class-management/ui/calendar.js`、`node --check dev/preview-calendar.mjs` → 通过；
-  - `node dev/preview-calendar.mjs` → 退出码 0，`dev/.cache/calendar-preview.png` / `-light.png` / `-editor.png` 三张截图生成（175/178/110 KB）；
-  - 页面静态自检：无内联脚本、无 http(s) 外链、无内联事件；38 个静态元素 ID 齐全；CSS 支持浅色/`data-theme`/`:focus-visible`/`position: fixed`；JS 含 `auroraPlugin.request` / `onEvent`，无 `fetch(` / `eval(` / `innerHTML =`；
+  - `node dev/preview-calendar.mjs` → 退出码 0，`dev/.cache/calendar-preview.png` / `-light.png` / `-editor.png` 三张截图生成（183425 / 186364 / 107474 字节）；
+  - 页面静态自检：无内联脚本、无 http(s) 外链、无内联事件；42 个唯一元素 ID 齐全（JS 绑定其中 40 个、0 缺失，另 2 个供 aria-labelledby）；CSS 支持浅色/`data-theme`/`:focus-visible`/`position: fixed`；JS 含 `auroraPlugin.request` / `onEvent`，无 `fetch(` / `eval(` / `innerHTML =`；
   - `node dev/preview.mjs` → 退出码 0（声明式预览无回归）；`git diff --check` → 无输出。
 - 遗留问题：真机手动核对（`/calendar` 打开、7 天卡片滚动、添加/完成/编辑/删除/拖动、切周、编辑安排/值日/通知、页面刷新后数据保留）需用户在 Aurora 0.5.2 真机确认；离线侧已完成清单/命令/静态约束/渲染截图/后端接口测试。
