@@ -16,6 +16,7 @@ const { pushAll, pushPanel } = require('./lib/push')
 const { WIDGET_IDS, PANEL_ID } = require('./lib/push')
 const { widgetSchema } = require('./lib/widgets')
 const { renderPanel, handlePanelAction } = require('./lib/panel')
+const { handleCalendarPanel, CALENDAR_PANEL_ID } = require('./lib/calendar')
 const { checkNotifications } = require('./lib/notify')
 
 let ticker = null
@@ -224,6 +225,7 @@ module.exports = {
   },
 
   async invokePanel(panelId, method, params, ctx) {
+    if (panelId === CALENDAR_PANEL_ID) return handleCalendarPanel(panelId, method, params, ctx)
     if (panelId !== PANEL_ID) return {}
     return handlePanelAction(panelId, method, params, ctx)
   },

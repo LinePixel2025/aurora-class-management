@@ -22,6 +22,7 @@ const {
   todayKey,
   addDays,
   dateKeyOf,
+  dateKeyOfWeekday,
   dateLabel,
   parseDateKey,
   resolveWeekContext,
@@ -227,6 +228,48 @@ async function loadWeek(ctx, options) {
     groupsText: formatDutyGroupsText(board),
     orderText: formatOrderText(board),
     stats: boardStats(board),
+  }
+}
+
+/**
+ * 页面型周历：一次返回整周 7 天的日期、事务摘要与安排，只读、不写存储。
+ * `weekOffsetInput` 与面板口径一致（-12..12，缺省本周）。
+ */
+async function loadWeekGrid(ctx, weekOffsetInput) {
+  const weekOffset = readWeekOffset(weekOffsetInput, 0)
+  const board = await readBoard(ctx)
+  const settings = readSettings(ctx.config)
+  const weekCtx = resolveWeekContext(weekOffset, settings, board)
+  const week = board.weeks[weekCtx.key] !== undefined ? board.weeks[weekCtx.key] : emptyWeek()
+  const duty = resolveDuty(board, weekCtx.key, weekCtx.weekNumber)
+  const tasks = sortTasks(week.tasks)
+  const schedule = sortSchedule(week.schedule)
+  const today = todayKey()
+  const days = []
+  for (let weekday = 1; weekday <= 7; weekday += 1) {
+    const date = dateKeyOfWeekday(weekCtx, weekday)
+    days.push({
+      date,
+      weekday,
+      label: dateLabel(date),
+      isToday: date === today,
+      canEdit: date >= today,
+      tasks: tasks.filter((task) => task.date === date).map((task) => taskSummary(task, weekCtx)),
+      schedule: schedule.filter((entry) => entry.weekday === weekday),
+    })
+  }
+  return {
+    weekOffset,
+    weekLabel: weekCtx.label,
+    weekNumber: weekCtx.weekNumber,
+    isCurrentWeek: weekCtx.isCurrent,
+    todayKey: today,
+    canEdit: weekOffset >= 0,
+    duty,
+    groups: board.duty.groups,
+    announcement: week.announcement,
+    stats: taskCounts(tasks, weekCtx),
+    days,
   }
 }
 
@@ -474,6 +517,38 @@ async function deleteTask(ctx, input) {
     touch(week)
     const weekCtx = taskWeekCtx(task, settings, board)
     return { task: taskSummary(task, weekCtx), weekCtx, date: task.date }
+  })
+}
+
+/**
+ * 把事务改到另一天（拖拽/改期共用）。跨周时先校验目标周容量，
+ * 再搬移并刷新源周与目标周的 updatedAt；任何报错都不会落盘。
+ */
+async function moveTask(ctx, input) {
+  const id = typeof input.id === 'string' ? input.id.trim() : ''
+  if (id === '') throw new DataError('请提供事务 id')
+  const date = readTaskDate(input.date)
+  const settings = readSettings(ctx.config)
+  return updateBoard(ctx, async (board) => {
+    const found = findTaskById(board, id)
+    if (found === null) throw new DataError(`找不到事务 id：${id}`)
+    const targetOffset = weekOffsetOfDate(date)
+    const targetWeekCtx = resolveWeekContext(targetOffset, settings, board)
+    const targetWeek = ensureWeek(board, targetWeekCtx.key)
+    if (found.weekKey !== targetWeekCtx.key) {
+      if (targetWeek.tasks.length >= LIMITS.maxTasksPerWeek) {
+        throw new DataError(`目标周事务已达 ${LIMITS.maxTasksPerWeek} 条上限`)
+      }
+      found.week.tasks.splice(found.week.tasks.indexOf(found.task), 1)
+      targetWeek.tasks.push(found.task)
+      touch(found.week)
+      touch(targetWeek)
+      found.task.date = date
+    } else {
+      found.task.date = date
+      touch(found.week)
+    }
+    return { task: taskSummary(found.task, targetWeekCtx), weekCtx: targetWeekCtx }
   })
 }
 
@@ -897,6 +972,7 @@ module.exports = {
   readTaskDate,
   readHistoryDate,
   loadWeek,
+  loadWeekGrid,
   loadTasksDueOn,
   loadUi,
   saveUi,
@@ -916,6 +992,7 @@ module.exports = {
   updateTask,
   completeTask,
   deleteTask,
+  moveTask,
   listTasks,
   setDutyWeek,
   setDutyGroups,

@@ -8,7 +8,8 @@
  * - 从本机 Aurora 0.5.2 的 app.asar 提取宿主原版 `validatePanelSchema`，校验每一份
  *   静态与动态 schema（找不到 Aurora 时降级为内置结构检查并打印警告）；
  * - 覆盖时间、存储、旧数据迁移、每日清空与 7 天历史、整周值日、工具、2 个浮窗、
- *   4 个面板视图、推送、跨天刷新与三类可选通知（每日简报 / 截止提醒 / 周一值日）。
+ *   4 个面板视图、推送、跨天刷新、三类可选通知（每日简报 / 截止提醒 / 周一值日）
+ *   与页面型「班级周历」后端。
  *
  * 运行：node dev/test-plugin.mjs
  */
@@ -427,6 +428,64 @@ async function refreshWidget(env, widgetId) {
 
 async function refreshPanel(env) {
   return invokePanel(env, 'refresh')
+}
+
+// ───────────────────────── 页面型面板 helper（班级周历） ─────────────────────────
+
+/** 页面型面板的 params 是直接对象，不要再套 `{ params, values }`。 */
+function invokeCalendar(env, method, params) {
+  return main.invokePanel('calendar', method, params !== null && typeof params === 'object' ? params : {}, env.ctx)
+}
+
+/** 成功返回 `{ data, message? }`；把契约检查集中在这里，失败时给出可读原因。 */
+function expectCalendarOk(result, label) {
+  assert(result !== null && typeof result === 'object', `${label} 未返回对象`)
+  assertEqual(result.error, undefined, `${label} 失败：${result.error}`)
+  assert(result.data !== null && typeof result.data === 'object', `${label} 缺少最新数据 data`)
+  return result.data
+}
+
+/** 失败返回 `{ data, error }`：既要有 error，也要带最新数据供页面回填。 */
+function expectCalendarError(result, label) {
+  assert(result !== null && typeof result === 'object', `${label} 未返回对象`)
+  assert(typeof result.error === 'string' && result.error !== '', `${label} 应返回 error，实际：${JSON.stringify(result)}`)
+  assert(result.data !== null && typeof result.data === 'object', `${label} 失败时应返回最新数据 data`)
+  return result.data
+}
+
+async function loadCalendar(env, params) {
+  return expectCalendarOk(await invokeCalendar(env, 'load', params), 'calendar load')
+}
+
+function calendarDayOf(data, date) {
+  assert(Array.isArray(data.days), 'calendar data.days 不是数组')
+  const day = data.days.find((item) => item.date === date)
+  assert(day !== undefined, `calendar data.days 缺少日期 ${date}`)
+  return day
+}
+
+function calendarTaskById(data, id) {
+  for (const day of data.days || []) {
+    const task = day.tasks.find((item) => item.id === id)
+    if (task !== undefined) return task
+  }
+  return null
+}
+
+function calendarTaskByText(data, text) {
+  for (const day of data.days || []) {
+    const task = day.tasks.find((item) => item.text === text)
+    if (task !== undefined) return task
+  }
+  return null
+}
+
+function calendarScheduleById(data, id) {
+  for (const day of data.days || []) {
+    const entry = day.schedule.find((item) => item.id === id)
+    if (entry !== undefined) return entry
+  }
+  return null
 }
 
 // ───────────────────────── 测试主体 ─────────────────────────
@@ -1405,6 +1464,301 @@ async function mainTest() {
     await test('面板未知动作不抛错', async () => {
       const result = await invokePanel(env, 'not-a-real-action')
       validateSchema('未知动作后 schema', result.schema)
+    })
+  })
+
+  header('班级周历后端')
+  await withEnv({}, async (env) => {
+    await test('load 固定返回 7 天：周一到周日、今日与可编辑标记', async () => {
+      const data = await loadCalendar(env)
+      assertEqual(data.days.length, 7, 'days 必须固定 7 项')
+      assertEqual(data.days[0].date, '2026-10-19', '第一天应为本周一')
+      assertEqual(data.days[6].date, '2026-10-25', '最后一天应为本周日')
+      assertEqual(data.days.map((day) => day.weekday).join(','), '1,2,3,4,5,6,7', 'weekday 应依次为 1..7')
+      assertEqual(data.days[0].label, '10/19 周一', 'day.label 应为日期标签')
+      assertEqual(data.days[2].isToday, true, '周三应为今天')
+      assertEqual(data.days.filter((day) => day.isToday).length, 1, '有且只有一天是今天')
+      assertEqual(data.todayKey, '2026-10-21')
+      assertEqual(data.weekOffset, 0)
+      assertEqual(data.isCurrentWeek, true)
+      assertEqual(data.canEdit, true)
+      assert(typeof data.weekLabel === 'string' && data.weekLabel.includes('10/19'), `weekLabel 异常：${data.weekLabel}`)
+      assert(Number.isInteger(data.weekNumber) && data.weekNumber >= 1, `weekNumber 异常：${data.weekNumber}`)
+      assert(Array.isArray(data.groups) && data.groups.length >= 1, 'groups 应为非空数组')
+      assert(data.groups.every((group) => typeof group.name === 'string' && group.name !== ''), 'groups 项缺少 name')
+      assert(Array.isArray(data.duty.members), 'duty.members 应为数组')
+      assert(typeof data.duty.groupName === 'string' && data.duty.groupName !== '', 'duty.groupName 缺失')
+      assert(
+        data.days.every((day) => Array.isArray(day.tasks) && Array.isArray(day.schedule)),
+        '每天的 tasks / schedule 应为数组',
+      )
+      assertEqual(data.days[0].canEdit, false, '本周已过去的天不应可编辑')
+      assertEqual(data.days[2].canEdit, true, '今天应可编辑')
+      assertEqual(data.days[6].canEdit, true, '未来天应可编辑')
+    })
+
+    await test('load 今日：事务摘要 / 安排 / 值日 / 通知 / 统计', async () => {
+      await invokeTool(env, 'add_task', {
+        text: '周历今日作业',
+        date: '2026-10-21',
+        dueDate: '2026-10-21',
+        dueTime: '18:00',
+        priority: 'high',
+        category: '作业',
+        assignee: '课代表',
+      })
+      await invokeTool(env, 'add_schedule', { weekday: 3, time: '16:00', title: '周历班会', place: '教室' })
+      await invokeTool(env, 'set_duty_week', { groupName: '第2组', note: '周历值日备注' })
+      await invokeTool(env, 'set_announcement', { text: '周历班级通知' })
+
+      const data = await loadCalendar(env)
+      const today = calendarDayOf(data, '2026-10-21')
+      assertEqual(today.weekday, 3, '周三的 weekday 应为 3')
+      const task = today.tasks.find((item) => item.text === '周历今日作业')
+      assert(task !== undefined, '今日事务未出现在今天')
+      for (const key of ['id', 'text', 'done', 'date', 'priority', 'category', 'assignee', 'dueLabel', 'overdue']) {
+        assert(Object.prototype.hasOwnProperty.call(task, key), `taskSummary 缺少字段 ${key}`)
+      }
+      assertEqual(task.date, '2026-10-21')
+      assertEqual(task.done, false)
+      assertEqual(task.priority, 'high')
+      assertEqual(task.category, '作业')
+      assertEqual(task.assignee, '课代表')
+      assert(task.dueLabel.includes('18:00'), `dueLabel 未包含截止时间：${task.dueLabel}`)
+      assertEqual(task.overdue, false, '18:00 截止的任务 10:00 时不应算逾期')
+      assert(
+        today.schedule.some((entry) => entry.title === '周历班会' && entry.time === '16:00'),
+        '对应 weekday 的安排未出现在周三',
+      )
+      assertEqual(data.duty.groupName, '第2组')
+      assertEqual(data.duty.note, '周历值日备注')
+      assertEqual(data.announcement, '周历班级通知')
+      const allTasks = data.days.flatMap((day) => day.tasks)
+      assertEqual(data.stats.total, allTasks.length, 'stats.total 与 7 天事务数不一致')
+      assertEqual(data.stats.pending, allTasks.filter((item) => !item.done).length, 'stats.pending 与 7 天待办数不一致')
+      assert(data.stats.pending >= 1, 'stats.pending 应包含今日事务')
+    })
+
+    await test('过去周只读：顶层与每天的 canEdit 均为 false', async () => {
+      const data = await loadCalendar(env, { weekOffset: -1 })
+      assertEqual(data.weekOffset, -1)
+      assertEqual(data.isCurrentWeek, false)
+      assertEqual(data.canEdit, false, '过去周顶层 canEdit 应为 false')
+      assertEqual(data.days.length, 7)
+      assertEqual(data.days[0].date, '2026-10-12')
+      assertEqual(data.days[6].date, '2026-10-18')
+      assert(data.days.every((day) => day.canEdit === false), '过去周每天 canEdit 都应为 false')
+      assert(data.days.every((day) => day.isToday === false), '过去周不应包含今天')
+      assertEqual(data.todayKey, '2026-10-21')
+    })
+
+    await test('事务动作：add / update / toggle / delete 均落盘', async () => {
+      const added = await invokeCalendar(env, 'add-task', {
+        text: '周历新增事务',
+        date: '2026-10-21',
+        priority: 'high',
+        category: '作业',
+        dueTime: '17:00',
+        weekOffset: 0,
+      })
+      const addedData = expectCalendarOk(added, 'calendar add-task')
+      assert(typeof added.message === 'string' && added.message !== '', 'add-task 应返回 message')
+      const created = calendarTaskByText(addedData, '周历新增事务')
+      assert(created !== null, 'add-task 返回数据里找不到新事务')
+      const id = created.id
+      assertEqual(created.date, '2026-10-21')
+      assertEqual(created.done, false)
+
+      const tomorrow = await invokeCalendar(env, 'add-task', {
+        text: '周历明日事务',
+        date: '2026-10-22',
+        weekOffset: 0,
+      })
+      const tomorrowData = expectCalendarOk(tomorrow, 'calendar add-task 明天')
+      assert(typeof tomorrow.message === 'string' && tomorrow.message !== '', 'add-task 明天应返回 message')
+      assert(
+        calendarDayOf(tomorrowData, '2026-10-22').tasks.some((task) => task.text === '周历明日事务'),
+        '明天的事务未落到对应天',
+      )
+
+      let data = await loadCalendar(env)
+      const persisted = calendarTaskById(data, id)
+      assert(persisted !== null, 'load 找不到新增事务')
+      assertEqual(persisted.date, '2026-10-21')
+      assert(calendarDayOf(data, '2026-10-21').tasks.some((task) => task.id === id), '今日事务不在今天')
+      assert(
+        calendarDayOf(data, '2026-10-22').tasks.some((task) => task.text === '周历明日事务'),
+        '明日事务不在明天',
+      )
+
+      const updated = await invokeCalendar(env, 'update-task', {
+        id,
+        text: '周历事务（改）',
+        priority: 'low',
+        dueTime: '09:30',
+        weekOffset: 0,
+      })
+      const updatedData = expectCalendarOk(updated, 'calendar update-task')
+      assert(typeof updated.message === 'string' && updated.message !== '', 'update-task 应返回 message')
+      const updatedTask = calendarTaskById(updatedData, id)
+      assert(updatedTask !== null, 'update-task 后找不到事务')
+      assertEqual(updatedTask.text, '周历事务（改）')
+      assertEqual(updatedTask.priority, 'low')
+      assertEqual(updatedTask.dueTime, '09:30')
+      assert(updatedTask.dueLabel.includes('09:30'), `dueLabel 未反映新的截止时间：${updatedTask.dueLabel}`)
+
+      const toggled = await invokeCalendar(env, 'toggle-task', { id, weekOffset: 0 })
+      const toggledData = expectCalendarOk(toggled, 'calendar toggle-task')
+      assert(typeof toggled.message === 'string' && toggled.message !== '', 'toggle-task 应返回 message')
+      assertEqual(calendarTaskById(toggledData, id).done, true, 'toggle-task 未标记完成')
+      const restored = await invokeCalendar(env, 'toggle-task', { id, weekOffset: 0 })
+      const restoredData = expectCalendarOk(restored, 'calendar toggle-task 恢复')
+      assertEqual(calendarTaskById(restoredData, id).done, false, '再次 toggle 未恢复为待办')
+
+      const deleted = await invokeCalendar(env, 'delete-task', { id, weekOffset: 0 })
+      const deletedData = expectCalendarOk(deleted, 'calendar delete-task')
+      assert(typeof deleted.message === 'string' && deleted.message !== '', 'delete-task 应返回 message')
+      assertEqual(calendarTaskById(deletedData, id), null, 'delete-task 返回数据仍含该事务')
+      data = await loadCalendar(env)
+      assertEqual(calendarTaskById(data, id), null, 'delete-task 后 load 仍能找到事务')
+      assert(calendarTaskByText(data, '周历明日事务') !== null, '删除事务不应误删其他事务')
+    })
+
+    await test('move-task：同周移动、跨周移动、过去日期回滚', async () => {
+      const added = await invokeCalendar(env, 'add-task', {
+        text: '周历移动事务',
+        date: '2026-10-21',
+        weekOffset: 0,
+      })
+      const id = calendarTaskByText(expectCalendarOk(added, 'move-task 前置 add-task'), '周历移动事务').id
+
+      const sameWeek = await invokeCalendar(env, 'move-task', { id, date: '2026-10-22', weekOffset: 0 })
+      const sameWeekData = expectCalendarOk(sameWeek, 'calendar 同周 move-task')
+      assert(typeof sameWeek.message === 'string' && sameWeek.message !== '', 'move-task 应返回 message')
+      const moved = calendarTaskById(sameWeekData, id)
+      assert(moved !== null, '同周移动后返回数据缺少事务')
+      assertEqual(moved.date, '2026-10-22', '同周移动未更新 task.date')
+      assert(
+        !calendarDayOf(sameWeekData, '2026-10-21').tasks.some((task) => task.id === id),
+        '同周移动后原天仍保留事务',
+      )
+      assert(
+        calendarDayOf(sameWeekData, '2026-10-22').tasks.some((task) => task.id === id),
+        '同周移动后目标天缺少事务',
+      )
+
+      const crossWeek = await invokeCalendar(env, 'move-task', { id, date: '2026-10-27', weekOffset: 0 })
+      expectCalendarOk(crossWeek, 'calendar 跨周 move-task')
+      const currentWeek = await loadCalendar(env, { weekOffset: 0 })
+      assertEqual(calendarTaskById(currentWeek, id), null, '跨周移动后原周仍能找到事务')
+      const nextWeek = await loadCalendar(env, { weekOffset: 1 })
+      assertEqual(nextWeek.weekOffset, 1)
+      assertEqual(nextWeek.isCurrentWeek, false)
+      const nextTask = calendarTaskById(nextWeek, id)
+      assert(nextTask !== null, '跨周移动后下周找不到事务')
+      assertEqual(nextTask.date, '2026-10-27')
+      assertEqual(nextWeek.canEdit, true, '下周应可编辑')
+      assert(
+        calendarDayOf(nextWeek, '2026-10-27').tasks.some((task) => task.id === id),
+        '下周目标天缺少事务',
+      )
+
+      const bad = await invokeCalendar(env, 'move-task', { id, date: '2026-10-20', weekOffset: 0 })
+      expectCalendarError(bad, 'calendar 过去日期 move-task')
+      assert(bad.error.includes('过去'), `过去日期错误提示不明确：${bad.error}`)
+      const nextAfter = await loadCalendar(env, { weekOffset: 1 })
+      const kept = calendarTaskById(nextAfter, id)
+      assert(kept !== null, '非法移动导致事务丢失')
+      assertEqual(kept.date, '2026-10-27', '非法移动后事务位置被改写（半写）')
+    })
+
+    await test('安排动作：add / update / delete 均出现在对应天', async () => {
+      const added = await invokeCalendar(env, 'add-schedule', {
+        weekday: 4,
+        time: '10:00',
+        title: '周历安排',
+        place: '报告厅',
+        weekOffset: 0,
+      })
+      const addedData = expectCalendarOk(added, 'calendar add-schedule')
+      assert(typeof added.message === 'string' && added.message !== '', 'add-schedule 应返回 message')
+      const entry = calendarDayOf(addedData, '2026-10-22').schedule.find((item) => item.title === '周历安排')
+      assert(entry !== undefined, '周四缺少新安排')
+      assertEqual(entry.time, '10:00')
+      assertEqual(entry.place, '报告厅')
+      const id = entry.id
+
+      const updated = await invokeCalendar(env, 'update-schedule', {
+        id,
+        title: '周历安排（改）',
+        time: '14:30',
+        weekOffset: 0,
+      })
+      const updatedData = expectCalendarOk(updated, 'calendar update-schedule')
+      assert(typeof updated.message === 'string' && updated.message !== '', 'update-schedule 应返回 message')
+      const updatedEntry = calendarScheduleById(updatedData, id)
+      assert(updatedEntry !== null, 'update-schedule 后找不到安排')
+      assertEqual(updatedEntry.title, '周历安排（改）')
+      assertEqual(updatedEntry.time, '14:30')
+
+      const deleted = await invokeCalendar(env, 'delete-schedule', { id, weekOffset: 0 })
+      const deletedData = expectCalendarOk(deleted, 'calendar delete-schedule')
+      assert(typeof deleted.message === 'string' && deleted.message !== '', 'delete-schedule 应返回 message')
+      assertEqual(calendarScheduleById(deletedData, id), null, 'delete-schedule 返回数据仍含安排')
+      const after = await loadCalendar(env)
+      assertEqual(calendarScheduleById(after, id), null, 'delete-schedule 后 load 仍能找到安排')
+    })
+
+    await test('set-duty-week / save-announcement 落盘并出现在 load', async () => {
+      const duty = await invokeCalendar(env, 'set-duty-week', {
+        groupName: '第3组',
+        note: '周历值日备注',
+        weekOffset: 0,
+      })
+      const dutyData = expectCalendarOk(duty, 'calendar set-duty-week')
+      assert(typeof duty.message === 'string' && duty.message !== '', 'set-duty-week 应返回 message')
+      assertEqual(dutyData.duty.groupName, '第3组')
+      assertEqual(dutyData.duty.note, '周历值日备注')
+      const afterDuty = await loadCalendar(env)
+      assertEqual(afterDuty.duty.groupName, '第3组')
+      assertEqual(afterDuty.duty.note, '周历值日备注')
+
+      const saved = await invokeCalendar(env, 'save-announcement', {
+        text: '周历通知：周五大扫除',
+        weekOffset: 0,
+      })
+      const savedData = expectCalendarOk(saved, 'calendar save-announcement')
+      assert(typeof saved.message === 'string' && saved.message !== '', 'save-announcement 应返回 message')
+      assertEqual(savedData.announcement, '周历通知：周五大扫除')
+      const afterNotice = await loadCalendar(env)
+      assertEqual(afterNotice.announcement, '周历通知：周五大扫除')
+    })
+
+    await test('非法输入：未知事务 id / 未知 method 不写数据且不抛错', async () => {
+      await invokeCalendar(env, 'add-task', {
+        text: '周历保留事务',
+        date: '2026-10-21',
+        weekOffset: 0,
+      })
+      const before = await loadCalendar(env)
+      const beforeDays = JSON.stringify(before.days)
+      assert(calendarTaskByText(before, '周历保留事务') !== null, '前置事务缺失')
+
+      for (const method of ['toggle-task', 'delete-task']) {
+        const result = await invokeCalendar(env, method, { id: 't-not-exist', weekOffset: 0 })
+        const data = expectCalendarError(result, `calendar ${method} 未知 id`)
+        assertEqual(result.message, undefined, `${method} 失败时不应返回 message`)
+        assertEqual(JSON.stringify(data.days), beforeDays, `${method} 未知 id 不应改写数据`)
+      }
+
+      const unknown = await invokeCalendar(env, 'not-a-real-method', { weekOffset: 0 })
+      assert(unknown !== null && typeof unknown === 'object', '未知 method 未返回对象')
+      assert(unknown.data !== null && typeof unknown.data === 'object', '未知 method 缺少 data')
+      assertEqual(unknown.error, undefined, '未知 method 不应返回 error')
+      assertEqual(unknown.message, undefined, '未知 method 不应返回 message')
+
+      const after = await loadCalendar(env)
+      assertEqual(JSON.stringify(after.days), beforeDays, '非法输入后数据被改写')
     })
   })
 
