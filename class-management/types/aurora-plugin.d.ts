@@ -1,5 +1,5 @@
 /**
- * Aurora 插件契约（手写副本，字段与 Aurora v0.5.1 `packages/shared/src/plugin/protocol.ts` 对齐）。
+ * Aurora 插件契约（手写副本，字段与 Aurora v0.5.2 `packages/shared/src/plugin/protocol.ts` 对齐）。
  *
  * 插件项目不依赖 Aurora 源码时用它获得编辑器补全；宿主升级 `apiVersion` 后以官方文档为准。
  */
@@ -72,6 +72,10 @@ export interface PluginPanelResult {
   toast?: string
   /** 页面型面板：原样交给 `auroraPlugin.request()` 的调用方 */
   data?: unknown
+  /** 页面型面板动作结果提示（成功时） */
+  message?: string
+  /** 页面型面板动作失败原因（DataError / 其他异常） */
+  error?: string
 }
 
 /** 小组件调用与面板同形。 */

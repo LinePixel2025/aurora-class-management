@@ -3,8 +3,8 @@
 /**
  * 班级事务台 · Aurora 插件入口。
  *
- * 只负责装配：工具 / 命令 / 面板 / 小组件 / 配置变化 / 跨天定时刷新。
- * 业务规则在 lib/ 下，数据只写插件私有存储（board.v1 / ui.v1）。
+ * 只负责装配：工具 / 命令 / 面板 / 小组件 / 配置变化 / 跨天定时刷新 / 通知检查。
+ * 业务规则在 lib/ 下，数据只写插件私有存储（board.v1 / ui.v1 / notify.v1）。
  */
 
 const { clip } = require('./lib/util')
@@ -12,8 +12,7 @@ const { nowMs, setNowForTests, resetNowForTests, todayKey, weekKeyFromOffset, we
 const { DataError, ensureBoard } = require('./lib/state')
 const ops = require('./lib/ops')
 const { overViewText, taskListText, planSummaryText } = require('./lib/text')
-const { pushAll, pushPanel } = require('./lib/push')
-const { WIDGET_IDS, PANEL_ID } = require('./lib/push')
+const { pushAll, pushPanel, WIDGET_IDS, PANEL_ID } = require('./lib/push')
 const { widgetSchema } = require('./lib/widgets')
 const { renderPanel, handlePanelAction } = require('./lib/panel')
 const { handleCalendarPanel, CALENDAR_PANEL_ID } = require('./lib/calendar')

@@ -349,8 +349,10 @@ function mockScript() {
       if (name === 'load') return Promise.resolve({ data })
       return Promise.resolve({ data, message: '演示模式' })
     },
-    onEvent() {
-      // 页面可能用 onEvent(name, handler) 或 onEvent(handler)；演示不推送事件，直接给空取消函数。
+    onEvent(listener) {
+      // 与宿主页面 preload 的真实签名一致：onEvent(listener(event, payload)) → 返回取消函数。
+      // 演示不推送事件；记录 listener 以便调试，但返回 noop 取消函数。
+      if (typeof listener !== 'function') return () => {}
       return () => {}
     },
   }

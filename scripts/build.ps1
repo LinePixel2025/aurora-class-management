@@ -21,17 +21,31 @@ $manifestPath = Join-Path $plugin 'manifest.json'
 if (-not (Test-Path $manifestPath)) { throw "找不到清单：$manifestPath" }
 if (-not (Test-Path $tests)) { throw "找不到测试脚本：$tests" }
 
+Write-Host '== 1/4 JavaScript 语法检查 ==' -ForegroundColor Cyan
+$jsFiles = @()
+$jsFiles += @(Get-ChildItem -Path $plugin -Recurse -File -Filter '*.js')
+foreach ($extra in @('dev\preview.mjs', 'dev\preview-calendar.mjs', 'dev\test-plugin.mjs')) {
+  $extraPath = Join-Path $root $extra
+  if (Test-Path $extraPath) { $jsFiles += @(Get-Item $extraPath) }
+}
+foreach ($file in $jsFiles) {
+  & node --check $file.FullName
+  if ($LASTEXITCODE -ne 0) { throw "JavaScript 语法检查未通过：$($file.FullName)" }
+}
+Write-Host "  语法检查通过：$($jsFiles.Count) 个文件"
+Write-Host ''
+
 if (Test-Path $checker) {
-  Write-Host '== 1/3 清单与 schema 静态校验 ==' -ForegroundColor Cyan
+  Write-Host '== 2/4 清单与 schema 静态校验 ==' -ForegroundColor Cyan
   & node $checker $plugin
   if ($LASTEXITCODE -ne 0) { throw '静态校验未通过' }
 } else {
-  Write-Host '== 1/3 跳过独立静态校验 ==' -ForegroundColor Yellow
+  Write-Host '== 2/4 跳过独立静态校验 ==' -ForegroundColor Yellow
   Write-Host '  未找到 plugin-dev-kit（本仓库不包含）；继续执行宿主 zod 与全链路测试。'
 }
 
 Write-Host ''
-Write-Host '== 2/3 离线全链路测试 ==' -ForegroundColor Cyan
+Write-Host '== 3/4 离线全链路测试 ==' -ForegroundColor Cyan
 & node $tests
 if ($LASTEXITCODE -ne 0) { throw '测试未通过' }
 
@@ -41,7 +55,7 @@ $zip = Join-Path (Resolve-Path $OutDir).Path ("class-management-$($manifest.vers
 if (Test-Path $zip) { Remove-Item $zip -Force }
 
 Write-Host ''
-Write-Host '== 3/3 打包 ==' -ForegroundColor Cyan
+Write-Host '== 4/4 打包 ==' -ForegroundColor Cyan
 
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -78,6 +92,9 @@ try {
 if ($names -notcontains 'manifest.json') { throw 'zip 根目录缺少 manifest.json' }
 if ($names | Where-Object { $_ -like '*node_modules*' }) { throw 'zip 中不应包含 node_modules' }
 if ($names | Where-Object { $_ -like '*\*' }) { throw 'zip 条目应使用正斜杠' }
+if ($names | Where-Object { $_ -match '(^|/)\.(env|git)' -or $_ -like '*.map' -or $_ -like '*.log' }) {
+  throw 'zip 中包含不应发布的临时/敏感文件'
+}
 
 $hash = Get-FileHash $zip -Algorithm SHA256
 $sizeKb = [math]::Round((Get-Item $zip).Length / 1KB, 1)

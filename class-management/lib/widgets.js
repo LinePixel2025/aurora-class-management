@@ -3,7 +3,7 @@
 /**
  * 2 个桌面浮窗的声明式 schema。
  *
- * 注意：Aurora 0.5.1 的 `PluginSchemaRenderer` 会把 row / grid 的子节点包进一个竖向
+ * 注意：Aurora 0.5.2 的 `PluginSchemaRenderer` 会把 row / grid 的子节点包进一个竖向
  * `.plugin-schema` 容器，因此浮窗按「一列到底」设计，用紧凑条目而不是并排按钮。
  *
  * 浮窗只保留必要动作：今日事务的快速添加与点条目完成/撤销；不再有“打开班级事务台”按钮。

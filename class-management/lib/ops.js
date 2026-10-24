@@ -96,7 +96,16 @@ function isOverdue(task, weekCtx) {
 
 function dueLabel(task, weekCtx) {
   const date = parseDateKey(task.dueDate)
-  if (date === null) return task.dueTime === '' ? '' : `今天 ${task.dueTime}`
+  if (date === null) {
+    if (task.dueTime === '') return ''
+    // 只填了时间没填日期：按事务所在日期解释，不能一律写成“今天”。
+    const today = todayKey()
+    const taskDate = parseDateKey(task.date)
+    if (taskDate === null || task.date === today) return `今天 ${task.dueTime}`
+    const inWeek = taskDate >= weekCtx.monday && taskDate <= weekCtx.sunday
+    const base = inWeek ? weekdayLabel(weekdayIndex(taskDate)) : `${taskDate.getMonth() + 1}/${taskDate.getDate()}`
+    return `${base} ${task.dueTime}`
+  }
   const inWeek = date >= weekCtx.monday && date <= weekCtx.sunday
   const base = inWeek ? weekdayLabel(weekdayIndex(date)) : `${date.getMonth() + 1}/${date.getDate()}`
   return task.dueTime === '' ? base : `${base} ${task.dueTime}`

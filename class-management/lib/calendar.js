@@ -10,8 +10,23 @@
 
 const { DataError } = require('./state')
 const ops = require('./ops')
+const { pushAll } = require('./push')
 
 const CALENDAR_PANEL_ID = 'calendar'
+
+/** 会修改数据的方法；`load` 与未知方法不写数据，也不触发推送。 */
+const WRITE_METHODS = new Set([
+  'add-task',
+  'update-task',
+  'toggle-task',
+  'delete-task',
+  'move-task',
+  'add-schedule',
+  'update-schedule',
+  'delete-schedule',
+  'set-duty-week',
+  'save-announcement',
+])
 
 /** 读取页面所需的整周数据。 */
 async function calendarData(ctx, weekOffset) {
@@ -106,6 +121,11 @@ async function handleCalendarPanel(panelId, method, params, ctx) {
     return respond(ctx, 0, { error: text }, text)
   }
 
+  if (weekOffset < 0 && WRITE_METHODS.has(name)) {
+    // 过去周只读：页面已禁用相关控件，后端再拦一层，避免直接请求改写历史周。
+    return respond(ctx, weekOffset, { error: '过去周只读，不能修改' }, '过去周只读，不能修改')
+  }
+
   let message = ''
   try {
     message = await runAction(name, p, ctx, weekOffset)
@@ -115,6 +135,15 @@ async function handleCalendarPanel(panelId, method, params, ctx) {
     }
     ctx.log('error', '班级周历操作失败', { method: name, error: String(error) })
     return respond(ctx, weekOffset, { error: '操作失败，请重试' }, '操作失败，请重试')
+  }
+
+  if (message !== '') {
+    // 写动作成功后刷新全部声明目标（2 面板 + 2 浮窗）；推送失败不影响动作结果。
+    try {
+      await pushAll(ctx, `calendar-${name}`)
+    } catch (error) {
+      ctx.log('warn', '班级周历推送失败', { method: name, error: String(error) })
+    }
   }
 
   return respond(ctx, weekOffset, message === '' ? {} : { message }, '操作失败，请重试')

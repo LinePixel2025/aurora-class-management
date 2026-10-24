@@ -229,8 +229,20 @@
       return
     }
     try {
-      const unsubscribe = window.auroraPlugin.onEvent('board.changed', scheduleReload)
-      if (typeof unsubscribe === 'function') state.unsubscribe = unsubscribe
+      // 宿主页面 preload 的签名是 onEvent(listener(event, payload))，返回取消函数。
+      const unsubscribe = window.auroraPlugin.onEvent(function (event) {
+        if (event === 'board.changed') scheduleReload()
+      })
+      if (typeof unsubscribe === 'function') {
+        state.unsubscribe = unsubscribe
+        window.addEventListener('pagehide', function () {
+          try {
+            unsubscribe()
+          } catch (error) {
+            void error
+          }
+        })
+      }
     } catch (error) {
       showStatus('订阅页面事件失败：' + messageOf(error), 'error')
     }
@@ -464,7 +476,7 @@
     }
 
     if (elements.dutySummary !== null && elements.dutySummary !== undefined) {
-      elements.dutySummary.textContent = dutySummaryText(data.duty)
+      elements.dutySummary.textContent = dutySummaryText(data)
       elements.dutySummary.disabled = !canEdit
     }
 
@@ -490,7 +502,8 @@
     setNavigationDisabled()
   }
 
-  function dutySummaryText(dutyRaw) {
+  function dutySummaryText(data) {
+    const dutyRaw = data !== null && typeof data === 'object' ? data.duty : null
     const duty = dutyRaw !== null && typeof dutyRaw === 'object' ? dutyRaw : {}
     const parts = []
     const groupName = textOf(duty.groupName).trim()
@@ -510,7 +523,8 @@
     const note = textOf(duty.note).trim()
     if (note !== '') parts.push(note)
 
-    return '本周值日：' + parts.join(' · ')
+    const prefix = data !== null && typeof data === 'object' && data.isCurrentWeek === true ? '本周值日：' : '该周值日：'
+    return prefix + parts.join(' · ')
   }
 
   function renderDays(data) {
@@ -1171,6 +1185,11 @@
       elements.dutySave.disabled = false
     }
     elements.dutyEditor.hidden = false
+    const dutyTitle = document.getElementById('duty-editor-title')
+    if (dutyTitle !== null) {
+      dutyTitle.textContent =
+        state.data.isCurrentWeek === true ? '本周值日' : '该周值日'
+    }
     focusElement(elements.dutyGroup)
   }
 

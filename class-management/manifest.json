@@ -4,7 +4,7 @@
   "version": "2.0.0",
   "apiVersion": 1,
   "minAuroraVersion": "0.5.2",
-  "description": "2 张桌面浮窗显示班级速览/本周值日与今日事务/本周安排，并提供 4 视图管理台与一整套 Agent 工具。",
+  "description": "2 张桌面浮窗（桌面层 + 亚克力）显示班级速览与今日事务；2 个面板（今日管理台 + 页面型班级周历）与 3 条斜杠命令；12 个 Agent 工具；可选系统通知。",
   "author": {
     "name": "LinePixel2025"
   },
