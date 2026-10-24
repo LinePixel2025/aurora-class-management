@@ -103,7 +103,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 当前离线验证结果：
 
 - `check-plugin.mjs`：通过（0 错误；本仓库未包含工具包，需要本地自备）；
-- `dev/test-plugin.mjs`：**71/71 项检查通过**；
+- `dev/test-plugin.mjs`：**73/73 项检查通过**；
   覆盖时间/周次、存储读取、串行并发写、2 个浮窗、12 个工具、4 个面板视图与全部编辑动作、每日清空与 7 天历史、整周值日轮换、命令、推送目标/条数、可选系统通知（三类通知的开关 / 提醒时间 / 去重 / 重启后不重发）、整周计划失败回滚、跨天/跨周刷新、旧数据迁移、容量修剪；
 - 所有静态与动态 schema 均通过 **Aurora 0.5.2 宿主原版** `validatePanelSchema`；清单同时通过从本机 Aurora 提取的宿主原版 zod `parsePluginManifest`；
 - `dist/class-management-1.1.0.zip`：46.5 KB，SHA-256 `74C3D29BEF5CD94B807B481A2180968CD1329C4A94084FD7CAF91C11C8D8FDAB`，manifest 在 zip 根，条目使用正斜杠，无 `node_modules`。
