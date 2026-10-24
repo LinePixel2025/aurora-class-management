@@ -23,7 +23,7 @@ const {
   parseDateKey,
 } = require('./time')
 const { readSettings } = require('./state')
-const { loadWeek } = require('./ops')
+const { loadWeek, loadTasksDueOn } = require('./ops')
 
 const NOTIFY_KEY = 'notify.v1'
 const TEXT_MAX = 40
@@ -166,19 +166,18 @@ async function checkNotifications(ctx) {
   }
 
   if (settings.notifyDue === true) {
-    const info = await ensureData()
-    const tasks = Array.isArray(info.tasks) ? info.tasks : []
+    const tasks = await loadTasksDueOn(ctx, today)
     const picked = []
     for (const task of tasks) {
       if (picked.length >= DUE_BATCH_MAX) break
       if (task === null || typeof task !== 'object' || task.done === true) continue
       if (typeof task.id !== 'string' || !ID_PATTERN.test(task.id) || task.id === '__proto__') continue
       if (typeof task.dueTime !== 'string' || task.dueTime === '') continue
-      const dueDate = typeof task.dueDate === 'string' ? task.dueDate : ''
-      if (dueDate !== '' && dueDate !== today) continue
       if (notifyState.due[task.id] === today) continue
       const dueMinutes = timeToMinutes(task.dueTime)
-      if (dueMinutes === null || nowMinutes < dueMinutes - dueLead) continue
+      if (dueMinutes === null) continue
+      // 只在 [截止前 lead 分钟, 截止时间] 窗口内提醒；已过截止时间不再提醒。
+      if (nowMinutes < dueMinutes - dueLead || nowMinutes > dueMinutes) continue
       picked.push(task)
     }
     if (picked.length > 0) {

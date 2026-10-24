@@ -234,6 +234,24 @@ async function loadUi(ctx) {
   return readUi(ctx)
 }
 
+/**
+ * 读取某一天截止的未完成事务（跨周扫描 board，不依赖 task.date 是否等于当天）。
+ * 用于截止提醒：昨天登记、今天截止的任务也要能提醒。
+ */
+async function loadTasksDueOn(ctx, date) {
+  const board = await readBoard(ctx)
+  const tasks = []
+  for (const week of Object.values(board.weeks)) {
+    for (const task of week.tasks) {
+      if (task.done) continue
+      if (task.dueDate === date || (task.dueDate === '' && task.date === date)) {
+        tasks.push(task)
+      }
+    }
+  }
+  return sortTasks(tasks)
+}
+
 async function saveUi(ctx, patch) {
   return updateUi(ctx, patch)
 }
@@ -879,6 +897,7 @@ module.exports = {
   readTaskDate,
   readHistoryDate,
   loadWeek,
+  loadTasksDueOn,
   loadUi,
   saveUi,
   bumpFormRev,

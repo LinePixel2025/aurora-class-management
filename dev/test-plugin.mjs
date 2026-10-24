@@ -1141,6 +1141,23 @@ async function mainTest() {
     await checkNotifications(env)
     assertEqual(env.notifications.length, 0, '明天截止的任务不应今天提醒')
   })
+  await test('过了截止时间不再提醒', async () => {
+    const env = atTime(new Date(2026, 9, 21, 8, 5, 0, 0), { notifyDue: true, notifyDueLead: 10 })
+    await addTask(env, { text: '已经过期的作业', dueTime: '08:00' })
+    await checkNotifications(env)
+    assertEqual(env.notifications.length, 0, '08:05 不应再提醒 08:00 截止的任务')
+  })
+  await test('昨天登记、今天截止的任务仍会提醒', async () => {
+    main.__test.setNow(new Date(2026, 9, 20, 9, 0, 0, 0).getTime())
+    const env = createContext({ config: { notifyDue: true, notifyDueLead: 10 } })
+    await addTask(env, { text: '昨天登记今天交', dueDate: '2026-10-21', dueTime: '08:00' })
+    const task = taskByText(env, '昨天登记今天交')
+    assert(task !== null, '找不到预置事务')
+    assertEqual(task.date, '2026-10-20')
+    main.__test.setNow(new Date(2026, 9, 21, 7, 55, 0, 0).getTime())
+    await checkNotifications(env)
+    assertEqual(env.notifications.length, 1, '昨天登记、今天截止的任务应被提醒')
+  })
   await test('ctx.notify 返回 false：不抛错并记录 warn', async () => {
     main.__test.setNow(new Date(2026, 9, 21, 7, 31, 0, 0).getTime())
     const env = createContext({ config: { notifyDaily: true }, notifyResult: false })
