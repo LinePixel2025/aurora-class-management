@@ -3,11 +3,13 @@
 > GitHub：<https://github.com/LinePixel2025/aurora-class-management>
 
 把「班级速览 + 本周值日」与「今日事务 + 本周安排」做成 2 张桌面浮窗，并在 Aurora 右栏提供
-一个可直接点卡片编辑的管理台；同时把数据接口交给 Agent——用自然语言就能改值日、加事务、排安排。
+两个面板：声明式「班级事务台」与页面型「班级周历」；同时把数据接口交给 Agent——
+用自然语言就能改值日、加事务、排安排。
 
 - 插件 id：`com.classmanagement.board`
-- 版本：`1.3.0`（插件 API v1，Aurora ≥ 0.5.2）
+- 版本：`2.0.0`（插件 API v1，Aurora ≥ 0.5.2）
 - 权限：`tools` / `skills` / `commands` / `storage` / `config` / `logging` / `ui.panels` / `ui.widgets` / `notifications`
+- 右栏面板：声明式「班级事务台」（`/class`，4 视图）+ 页面型「班级周历」（`/calendar`，垂直 7 天时间线）
 - 系统通知：可选（每日简报 / 截止提醒 / 周一值日提醒），默认全关，需在插件设置里开启
 
 ## 安装
@@ -15,9 +17,9 @@
 ### 方式 A：安装插件包（推荐）
 
 1. 在项目根目录运行 `powershell -ExecutionPolicy Bypass -File scripts\build.ps1`，得到
-   `dist/class-management-1.1.0.zip`（zip 根目录直接是 `manifest.json`）；
+   `dist/class-management-2.0.0.zip`（zip 根目录直接是 `manifest.json`）；
 2. Aurora → 设置 → 插件 → 已安装 → **安装插件包**，选择该 zip；
-3. 核对权限与工具后安装。安装完成后桌面出现 2 张浮窗，右栏可打开「班级事务台」。
+3. 核对权限与工具后安装。安装完成后桌面出现 2 张浮窗，右栏可打开「班级事务台」或「班级周历」。
 4. 如需免掉只读工具的逐次确认，在插件详情点「信任此插件」。
 
 ### 方式 B：开发目录（改代码自动重启）
@@ -49,7 +51,11 @@
 - 浮窗始终显示**今天 / 本周**；跨天/跨周时插件会自动推送刷新，不需要手动点刷新。
 - 隐藏 / 显示：设置 → 插件 → 班级事务台 → 对应浮窗的「显示在桌面」开关。
 
-## 右栏管理台
+## 右栏面板
+
+共 2 个面板：声明式「班级事务台」与页面型「班级周历」。
+
+### 班级事务台（声明式）
 
 命令 `/class` 或右栏「插件面板 → 班级事务台」打开，共 4 个视图：
 
@@ -60,6 +66,22 @@
 
 顶部「视图」下拉框 + 「应用」按钮切换视图；「值日 / 安排」视图额外显示「周」下拉框，可查看前后周。
 事务只显示今天，周切换只影响值日、安排和通知。
+
+### 班级周历（页面型）
+
+命令 `/calendar` 或右栏「插件面板 → 班级周历」打开，入口是 `ui/calendar.html`：
+
+- **垂直 7 天时间线**：每天一张卡片，展示当天事务与安排；顶部显示周次、本周待办 / 完成 / 逾期统计和本周值日组；
+- **事务**：在当天行内添加；点圆圈按钮完成 / 撤销，点「编辑」打开编辑卡片（内容、截止、优先级、分类、负责人），可删除；
+  可以拖动事务到本周其他日期，**过去日期不能拖入**；
+- **安排 / 值日 / 通知**：点安排条目编辑或删除；「本周值日」可临时换组并写备注；班级通知在页面底部直接编辑保存；
+- **切换周**：上一周 / 本周 / 下一周，范围 −12～+12 周；**过去日期只读**（含过去整周），不能添加、编辑、拖动或保存；
+- 与声明式事务台共用同一份数据；页面订阅 `board.changed`，Agent 或浮窗改动后会刷新，
+  重新打开面板时也会重新读取最新数据。
+
+页面运行在 Aurora 的页面沙箱里，只通过 `window.auroraPlugin.request` / `onEvent` 与插件后端通信：
+没有内联脚本、没有 CDN、没有 `fetch`，不读写文件 / 网络；页面展示的数据全部来自插件后端
+（`ui/calendar.js` → `lib/calendar.js` → `lib/ops.js`）。
 
 ## 系统通知（可选）
 
@@ -95,10 +117,10 @@
 | `apply_week_plan` | 一次写入整周事务/安排/值日组/通知，原子生效 |
 
 - 工具默认需要确认；在插件详情「信任此插件」后，只读工具（`get_overview` / `list_tasks`）免确认。
-- 写入成功后浮窗与已打开的管理台会通过 `ctx.ui.panelEvent` 即时刷新，无需手动刷新。
+- Agent 写入成功后通过 `ctx.ui.panelEvent` 向 2 个面板与 2 张浮窗推送 `board.changed`，无需手动刷新。
 - 值日已改为整周轮换：`set_duty_day` 已删除；`apply_week_plan` 的 `plan.duty` 传 `days` 会报错。
 - 附带 Skill `class-board`，教 Agent `date` / `weekOffset` 的分工、id 与批量写入方式。
-- 斜杠命令：`/class` 打开班级事务台；`/week-plan` 让 Agent 用三条要点总结今日计划。
+- 斜杠命令：`/class` 打开班级事务台；`/week-plan` 让 Agent 用三条要点总结今日计划；`/calendar` 打开班级周历。
 
 对 Agent 说这些话就能改数据：
 
@@ -110,8 +132,10 @@
 
 - 数据只在插件私有存储：`%APPDATA%\Aurora\plugin-data\com.classmanagement.board\storage.json`
   （`board.v1` 业务数据、`ui.v1` 界面状态、`notify.v1` 通知去重状态）；`board.v1` 内部 schema 为 v2，首次启动自动从旧版迁移。
+  声明式事务台与页面型班级周历复用同一份数据，页面不新增存储键。
 - 事务带 `date`，界面只显示今天；旧事务保留最近 7 天（今天 + 前 6 天），之后自动清理。
 - 单值上限 240 KB（宿主上限 256 KB）；每周事务 ≤ 80、安排 ≤ 60，最多保留 40 周，超限会先修剪最旧周。
+- 事件推送固定为 `board.changed`：`pushAll` 一次发送 2 个面板 + 2 张浮窗共 4 条，低于宿主单次 5 条上限。
 - 设置 → 插件 → 班级事务台 可改：班级名称、班主任、学期起始日期（第 1 周周一，留空则以首次运行所在周为第 1 周）、
   今日事务浮窗是否显示已完成事务、三类系统通知的开关与提醒时间（见「系统通知」）。
 - 不联网、不读写用户文件、不读取 Aurora 凭据。
@@ -122,6 +146,10 @@
 **不是操作系统沙箱**；安装插件 = 信任其代码。本插件本身只使用插件存储与界面 API，不发起网络请求、
 不访问插件目录以外的文件；但请仍然只安装来源可信的插件包。
 
+页面型「班级周历」由宿主在页面沙箱中加载：页面只通过 `window.auroraPlugin.request` /
+`onEvent` 与插件后端通信；HTML 无内联脚本，不引用 CDN，不使用 `fetch`，不读写文件 / 网络，
+页面展示的数据全部来自插件后端。页面沙箱只约束这一个面板，不等于上面的插件进程沙箱。
+
 ## 目录
 
 ```
@@ -130,15 +158,21 @@ main.js                    入口：工具 / 命令 / 面板 / 浮窗 / 跨天�
 lib/time.js                本地周运算、日期标签与日期校验
 lib/state.js               存储读写、schema 迁移、7 天历史清理、串行队列
 lib/duty.js                整周值日轮换与分组解析
-lib/ops.js                 业务操作（工具/面板/浮窗共用）
+lib/ops.js                 业务操作（工具 / 面板 / 页面周历共用）
 lib/text.js                Agent 文本输出
+lib/util.js                文本净化、参数拆分、id 生成与优先级映射
 lib/push.js                事件推送目标与单次上限
 lib/notify.js              可选系统通知：每日简报 / 截止提醒 / 值日提醒与去重
 lib/widgets.js             2 个浮窗 schema
-lib/panel.js               4 个面板视图与动作
+lib/panel.js               声明式「班级事务台」的 4 个视图与动作
+lib/calendar.js            页面型「班级周历」后端：整周数据与页面动作
 ui/*.json                  初始声明式 schema（宿主兜底）
+ui/calendar.html           页面型面板入口（垂直 7 天时间线）
+ui/calendar.css            页面样式（深 / 浅色）
+ui/calendar.js             页面交互：仅使用 window.auroraPlugin
 skills/class-board         Agent Skill
 types/aurora-plugin.d.ts   契约类型
+README.md                  本说明（随插件包发布）
 ```
 
 ## 开发与验证
@@ -146,19 +180,28 @@ types/aurora-plugin.d.ts   契约类型
 在项目根目录：
 
 ```powershell
-node plugin-dev-kit/tools/check-plugin.mjs class-management   # 清单 / 权限 / schema 静态校验
-node dev/test-plugin.mjs                                      # 离线全链路测试（mock 宿主 + 宿主 schema 校验器）
-node dev/preview.mjs                                          # 生成浮窗/面板预览与截图（dev/.cache）
+node plugin-dev-kit/tools/check-plugin.mjs class-management   # 清单 / 权限 / schema 静态校验（v2.0.0）
+node dev/test-plugin.mjs                                      # 离线全链路测试（mock 宿主 + 宿主 schema 校验器，88/88）
+node dev/preview.mjs                                          # 生成浮窗 / 面板预览与截图（dev/.cache）
+node dev/preview-calendar.mjs                                 # 生成页面型「班级周历」预览与截图（dev/.cache）
 powershell -ExecutionPolicy Bypass -File scripts/build.ps1    # 校验 + 测试 + 打 zip
 ```
 
 `dev/test-plugin.mjs` 会从本机 Aurora 的 `app.asar` 里提取宿主原版 `validatePanelSchema`，
 校验每一份静态与动态 schema；没有安装 Aurora 时会降级为结构检查。
 
+`dev/preview-calendar.mjs` 把真实的 `ui/calendar.html|css|js` 合成一份可用 `file://` 打开的预览页，
+注入只读 mock `window.auroraPlugin` 后交给本机 Chrome / Edge headless 截图；产物只写在 `dev/.cache/`，
+不随插件包发布。
+
+当前离线验证：`check-plugin.mjs` 通过（v2.0.0，2 面板 / 3 命令），`dev/test-plugin.mjs` **88/88 通过**。
+
 ### 已知平台特性（Aurora 0.5.2）
 
 - `PluginSchemaRenderer` 的 `row` / `grid` 会把子节点再包进一个纵向 `.plugin-schema`，
-  实际按列渲染。本插件因此全部按单列排版：视图/周切换用下拉框，事务用“点条目展开编辑卡片”。
+  实际按列渲染。声明式事务台因此全部按单列排版：视图/周切换用下拉框，事务用“点条目展开编辑卡片”。
+- 页面型面板由清单 `entry` 指定插件目录内的 HTML；页面运行在宿主沙箱中，
+  只通过 `window.auroraPlugin.request` / `onEvent` 与插件后端通信，不使用内联脚本、CDN 或 `fetch`。
 - 桌面浮窗由宿主创建，插件 API v1 仍不允许插件自建窗口；0.5.2 起支持
   `windowLevel`（`floating` / `normal` / `desktop`）与 `windowMaterial`（`none` / `acrylic`）。
 - 本插件 2 张浮窗默认 `desktop` / `acrylic`：`desktop` 由宿主按“普通窗口 + Win32 owner 亲和 + 恢复守护”实现，
