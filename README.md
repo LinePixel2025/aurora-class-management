@@ -2,7 +2,7 @@
 
 > GitHub：<https://github.com/LinePixel2025/aurora-class-management>
 
-基于 **Aurora v0.5.1（插件 API v1）** 的班级事务管理系统：
+基于 **Aurora v0.5.2（插件 API v1）** 的班级事务管理系统：
 
 - **2 张桌面浮窗**：班级速览（含本周值日）与今日事务（含本周安排）——可拖动、可缩放、可隐藏，位置由 Aurora 记住；
 - **右栏管理台**：今日 / 值日 / 安排 / 设置 四个视图，事务与安排直接点卡片编辑，不再有“选择 + 留空不改 + 一排按钮”；
@@ -30,7 +30,7 @@ dev/.cache/                       预览 HTML / PNG / 字体缓存（已 gitigno
 scripts/build.ps1                 校验 → 测试 → 打 zip → 输出 SHA-256
 scripts/dev-register.ps1          注册 / 移除开发目录（需先退出 Aurora，自动备份配置）
 docs/images/                      README 用截图（预览脚本生成后拷入）
-docs/aurora-widget-desktop-level.md  Aurora 宿主“桌面层小组件”需求说明（非本插件功能）
+docs/aurora-widget-desktop-level.md  Aurora 0.5.2 桌面层与 Acrylic 小组件能力说明（不随插件包发布）
 ```
 
 > 本仓库**不包含** Aurora 官方的 `plugin-dev-kit/`（第三方工具包）。需要独立静态校验时，把它放到项目根的 `plugin-dev-kit/`；`dev/test-plugin.mjs` 会优先从本机 Aurora 安装目录提取宿主校验器。
@@ -138,12 +138,16 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 - 权限只有 `tools / skills / commands / storage / config / logging / ui.panels / ui.widgets`；
 - 插件进程以当前用户权限运行，**不是 OS 沙箱，安装即信任**；本插件不发起网络请求、不读写插件目录以外的文件。
 
-## 平台特性与边界（Aurora 0.5.1）
+## 平台特性与边界（Aurora 0.5.2）
 
-- **桌面浮窗**是宿主创建的置顶浮动 `BrowserWindow`（`alwaysOnTop`、无边框、不占任务栏），
-  不是壁纸层嵌入，也不是插件自建窗口；v1 不允许插件创建任意窗口。
-- **浮窗无法“只在桌面显示、不置顶其他窗口”**：宿主把桌面小组件窗口层级硬编码为置顶，插件 API 没有层级 / 壁纸层槽位。
-  已整理一份给 Aurora 的宿主需求说明：[docs/aurora-widget-desktop-level.md](docs/aurora-widget-desktop-level.md)。
+- **桌面浮窗**是宿主创建的无边框浮动 `BrowserWindow`（不占任务栏），不是插件自建窗口；
+  Aurora 0.5.2 起支持 `windowLevel`（`floating` / `normal` / `desktop`）与 `windowMaterial`（`none` / `acrylic`）：
+  本项目 2 张浮窗默认声明 `desktop` + `acrylic`。
+- **`desktop` 是尽力而为的桌面层**：由宿主以“普通窗口 + Win32 owner 亲和 + 恢复守护”实现，owner 亲和失败时回退普通层（`normal`）；
+  它**不是壁纸层嵌入、不是桌面图标层、也不是点击穿透**。
+- **层级可由用户覆盖**：Aurora 设置 → 插件 → 班级事务台 → 对应浮窗，可逐 widget 改为跟随插件 / 置顶 / 普通 / 桌面层；
+  插件只声明默认值，实际层级以宿主的用户覆盖为准。
+- **Acrylic 有条件**：需要 Windows 11 22H2+ 且宿主外观的毛玻璃（glass）开启；不满足时回退为不透明背景。
 - 单插件最多 **4 个小组件**，本项目使用 2 个；提示条（edge-bar）是另一种槽位，本项目未使用。
 - 宿主 `PluginSchemaRenderer` 的 `row` / `grid` 会把子节点再包进一个纵向 `.plugin-schema`，实际按列渲染。
   因此本项目全部单列排版：视图/周切换用「下拉框 + 应用按钮」，事务用「点条目展开编辑卡片」。

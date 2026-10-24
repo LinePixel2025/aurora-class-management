@@ -6,7 +6,7 @@
 一个可直接点卡片编辑的管理台；同时把数据接口交给 Agent——用自然语言就能改值日、加事务、排安排。
 
 - 插件 id：`com.classmanagement.board`
-- 版本：`1.1.0`（插件 API v1，Aurora ≥ 0.5.1）
+- 版本：`1.2.0`（插件 API v1，Aurora ≥ 0.5.2）
 - 权限：`tools` / `skills` / `commands` / `storage` / `config` / `logging` / `ui.panels` / `ui.widgets`
 
 ## 安装
@@ -33,13 +33,17 @@
 
 ## 桌面浮窗
 
-| 浮窗 | 内容 | 默认尺寸 |
-| --- | --- | --- |
-| 班级速览 | 班级名、周次、今日事务计数、本周值日组与成员、值日备注、本周安排数、班级通知摘要 | 320×300 |
-| 今日事务 | 今日待办/完成/逾期计数、完成率、行内快速添加、点条目完成/撤销、本周安排（今日高亮） | 360×460 |
+| 浮窗 | 内容 | 默认尺寸 | `windowLevel` | `windowMaterial` |
+| --- | --- | --- | --- | --- |
+| 班级速览 | 班级名、周次、今日事务计数、本周值日组与成员、值日备注、本周安排数、班级通知摘要 | 320×300 | `desktop` | `acrylic` |
+| 今日事务 | 今日待办/完成/逾期计数、完成率、行内快速添加、点条目完成/撤销、本周安排（今日高亮） | 360×460 | `desktop` | `acrylic` |
 
-- 都是 Aurora 的**桌面置顶浮动卡片**（`alwaysOnTop`，无边框、不占任务栏），可拖动、缩放、隐藏；
+- 都是 Aurora 的**桌面层浮动卡片**（默认 `windowLevel: "desktop"`、`windowMaterial: "acrylic"`，无边框、不占任务栏），可拖动、缩放、隐藏；
   位置与显隐由 Aurora 持久化，重启后保留。
+- `desktop` 是尽力而为：宿主按“普通窗口 + Win32 owner 亲和 + 恢复守护”实现，owner 亲和失败时回退普通层（`normal`）；
+  不是壁纸层嵌入、不是桌面图标层、也不是点击穿透。
+- Acrylic 需要 Windows 11 22H2+ 且宿主外观的毛玻璃（glass）开启，否则回退为不透明背景。
+- 插件只声明默认层级 / 材质；在 Aurora 设置 → 插件 → 班级事务台 → 对应浮窗可逐 widget 改为跟随插件 / 置顶 / 普通 / 桌面层。
 - 浮窗只保留必要动作：快速添加 + 点事务完成/撤销；**没有“打开班级事务台 / 编辑值日 / 编辑安排”等按钮**。
 - 浮窗始终显示**今天 / 本周**；跨天/跨周时插件会自动推送刷新，不需要手动点刷新。
 - 隐藏 / 显示：设置 → 插件 → 班级事务台 → 对应浮窗的「显示在桌面」开关。
@@ -135,11 +139,15 @@ powershell -ExecutionPolicy Bypass -File scripts/build.ps1    # 校验 + 测试 
 `dev/test-plugin.mjs` 会从本机 Aurora 的 `app.asar` 里提取宿主原版 `validatePanelSchema`，
 校验每一份静态与动态 schema；没有安装 Aurora 时会降级为结构检查。
 
-### 已知平台特性（Aurora 0.5.1）
+### 已知平台特性（Aurora 0.5.2）
 
 - `PluginSchemaRenderer` 的 `row` / `grid` 会把子节点再包进一个纵向 `.plugin-schema`，
   实际按列渲染。本插件因此全部按单列排版：视图/周切换用下拉框，事务用“点条目展开编辑卡片”。
-- 桌面浮窗是置顶浮动卡片，不是壁纸层嵌入；v1 不允许插件自建窗口，也不能修改窗口层级。
-- “浮窗只在桌面显示、不置顶其他窗口”需要 Aurora 宿主提供新能力，需求说明见项目仓库的
-  `docs/aurora-widget-desktop-level.md`（不随插件包发布）。
+- 桌面浮窗由宿主创建，插件 API v1 仍不允许插件自建窗口；0.5.2 起支持
+  `windowLevel`（`floating` / `normal` / `desktop`）与 `windowMaterial`（`none` / `acrylic`）。
+- 本插件 2 张浮窗默认 `desktop` / `acrylic`：`desktop` 由宿主按“普通窗口 + Win32 owner 亲和 + 恢复守护”实现，
+  owner 亲和失败时回退普通层（`normal`）；它不是壁纸层嵌入、不是桌面图标层、也不是点击穿透。
+- Acrylic 需 Windows 11 22H2+ 且宿主外观的毛玻璃（glass）开启，否则回退为不透明背景。
+- 用户可在 Aurora 设置 → 插件 → 班级事务台 → 对应浮窗逐 widget 覆盖层级（跟随插件 / 置顶 / 普通 / 桌面层）；
+  插件只声明默认值，不读写宿主的窗口布局覆盖。
 - 提示条（edge-bar）小组件与本期 2 张桌面浮窗不同槽位；单插件最多 4 个小组件。

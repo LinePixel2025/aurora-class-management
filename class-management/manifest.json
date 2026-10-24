@@ -1,9 +1,9 @@
 {
   "id": "com.classmanagement.board",
   "name": "班级事务台",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "apiVersion": 1,
-  "minAuroraVersion": "0.5.1",
+  "minAuroraVersion": "0.5.2",
   "description": "2 张桌面浮窗显示班级速览/本周值日与今日事务/本周安排，并提供 4 视图管理台与一整套 Agent 工具。",
   "author": {
     "name": "LinePixel2025"
@@ -565,6 +565,8 @@
         "title": "班级速览",
         "icon": "Gauge",
         "slot": "desktop",
+        "windowLevel": "desktop",
+        "windowMaterial": "acrylic",
         "schema": "ui/widget-overview.json",
         "defaultSize": {
           "width": 320,
@@ -576,6 +578,8 @@
         "title": "今日事务",
         "icon": "ListChecks",
         "slot": "desktop",
+        "windowLevel": "desktop",
+        "windowMaterial": "acrylic",
         "schema": "ui/widget-tasks.json",
         "defaultSize": {
           "width": 360,

@@ -5,7 +5,7 @@
  * 离线全链路测试（零依赖）。
  *
  * - 用 mock ctx 精确复刻宿主的 `{ params, values }` 形状与 `refresh / event` 调用；
- * - 从本机 Aurora 0.5.1 的 app.asar 提取宿主原版 `validatePanelSchema`，校验每一份
+ * - 从本机 Aurora 0.5.2 的 app.asar 提取宿主原版 `validatePanelSchema`，校验每一份
  *   静态与动态 schema（找不到 Aurora 时降级为内置结构检查并打印警告）；
  * - 覆盖时间、存储、旧数据迁移、每日清空与 7 天历史、整周值日、工具、2 个浮窗、
  *   4 个面板视图、推送与跨天刷新。
@@ -321,7 +321,7 @@ function createContext(options) {
     ...(settings.config || {}),
   }
   const ctx = {
-    plugin: { id: PLUGIN_ID, version: '1.1.0', root: PLUGIN, dataDir: PLUGIN, isDev: true },
+    plugin: { id: PLUGIN_ID, version: '1.2.0', root: PLUGIN, dataDir: PLUGIN, isDev: true },
     config,
     storage: {
       async get(key) {
@@ -452,9 +452,9 @@ async function mainTest() {
   header('清单与静态文件')
   await test('清单基础字段', async () => {
     assertEqual(manifest.id, PLUGIN_ID)
-    assertEqual(manifest.version, '1.1.0')
+    assertEqual(manifest.version, '1.2.0')
     assertEqual(manifest.apiVersion, 1)
-    assertEqual(manifest.minAuroraVersion, '0.5.1')
+    assertEqual(manifest.minAuroraVersion, '0.5.2')
     assertEqual(manifest.main, 'main.js')
     assertEqual(manifest.activation, 'startup')
     assert(manifest.description.length <= 300, 'description 超过 300')
@@ -479,10 +479,12 @@ async function mainTest() {
     const readonly = manifest.contributes.tools.filter((tool) => tool.readonly === true).map((tool) => tool.name)
     assertEqual(readonly.sort().join(','), ['get_overview', 'list_tasks'].sort().join(','))
   })
-  await test('小组件：2 个桌面声明式、尺寸合法', async () => {
+  await test('小组件：2 个桌面声明式、桌面层 + 亚克力、尺寸合法', async () => {
     assertEqual(manifest.contributes.widgets.length, 2)
     for (const widget of manifest.contributes.widgets) {
       assertEqual(widget.slot, 'desktop')
+      assertEqual(widget.windowLevel, 'desktop', `${widget.id} 默认窗口层级应为 desktop`)
+      assertEqual(widget.windowMaterial, 'acrylic', `${widget.id} 默认窗口材质应为 acrylic`)
       assert(widget.schema !== undefined && widget.entry === undefined, '小组件必须且只能声明 schema')
       assert(widget.defaultSize.width >= 120 && widget.defaultSize.width <= 1200, '宽度越界')
       assert(widget.defaultSize.height >= 80 && widget.defaultSize.height <= 900, '高度越界')

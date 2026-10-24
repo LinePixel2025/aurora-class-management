@@ -1,77 +1,131 @@
-# Aurora 桌面小组件层级需求：允许“只在桌面显示”
+# Aurora 桌面层与亚克力小组件能力说明（v0.5.2）
 
-> 状态：需求说明（不是本插件已实现的功能）
-> 适用宿主：Aurora 0.5.1 / 插件 API v1
-> 提出方：班级事务台插件（`com.classmanagement.board`）
+> 状态：**已由宿主 0.5.2 提供，本插件已采用**（班级事务台 v1.2.0）
+> 适用宿主：Aurora **0.5.2 及以上**（插件 API v1）
+> 插件：`com.classmanagement.board`（班级事务台）
+> 契约依据：宿主插件契约 §3.1 / §5.3（桌面小组件）、开发指南 §7.5（桌面 / 提示条小组件）
 
-## 1. 需求
+## 1. 能力概览
 
-班级事务台把「班级速览 / 本周值日 / 今日事务 / 本周安排」做成 2 张桌面小组件。当前它们会一直显示在其他应用窗口之上；希望宿主提供一种**非置顶 / 桌面层**的小组件层级，让浮窗只在桌面可见，切换到其他应用时被正常窗口覆盖。
+Aurora 0.5.2 为**桌面小组件**（`slot: "desktop"`）新增两枚清单声明字段：`windowLevel` 与
+`windowMaterial`。插件在 `contributes.widgets` 里声明默认层级与材质，窗口仍由宿主创建和管理；
+该能力**不新增权限，也不新增宿主 API**。
 
-期望行为：
+| 字段 | 取值 | 默认 | 作用范围 |
+| --- | --- | --- | --- |
+| `windowLevel` | `"floating"` / `"normal"` / `"desktop"` | `"floating"` | 仅 `slot: "desktop"` |
+| `windowMaterial` | `"none"` / `"acrylic"` | `"none"` | 仅 `slot: "desktop"` |
 
-- 小组件仍然在桌面上可见、可拖动、可缩放、可隐藏；
-- 用户打开浏览器、Office、全屏视频等窗口后，小组件被这些窗口覆盖；
-- 不要求壁纸层嵌入、桌面图标层或点击穿透；
-- 默认行为保持现状（置顶），由插件或用户显式选择新层级。
+`windowLevel` 的三档：
 
-## 2. 现状与证据
+- `floating`：置顶浮动卡片（`alwaysOnTop`），与 0.5.1 行为一致；
+- `normal`：不置顶，按普通无边框窗口参与 z-order；
+- `desktop`：不置顶；宿主在 Windows 上把窗口的 Win32 owner 指向桌面 shell 视图，并带最小化
+  恢复守护，让 Win+D / Win+M 后仍尽量可见。**属尽力而为**：owner 亲和失败时回退 `normal`。
 
-Aurora 0.5.1 中，桌面小组件由主进程的 `WidgetManager` 创建，层级是硬编码的：
+`windowMaterial` 的两档：
 
-- 创建 `BrowserWindow` 时固定 `alwaysOnTop: true`、`skipTaskbar: true`；
-- 创建后固定调用 `win.setAlwaysOnTop(true, 'floating')`；
-- manifest 的 `contributes.widgets` 只有 `slot: "desktop" | "edge-bar"`，没有窗口层级字段；
-- 插件 API v1 不向插件暴露 `BrowserWindow` / `BrowserWindow.setAlwaysOnTop`；
-- `plugin-dev-kit/docs/01-contract.md §5.3` 明确：桌面小组件是**置顶浮动卡片**，v1 不做壁纸层嵌入、桌面图标层、点击穿透；
-- Aurora 0.5.1 发行说明的“已知限制”同样写明“桌面小组件是置顶浮动卡片”。
+- `none`：默认，不透明卡片；
+- `acrylic`：原生 Acrylic 材质，**仅 Windows 11 22H2 及以上、且宿主外观设置
+  `appearance.glass`（毛玻璃）开启时**逐 widget 生效；不满足条件或启用失败时保持不透明卡片。
 
-因此，该需求无法由插件侧实现；插件不应通过外部 Win32 调用修改宿主窗口层级（不符合“不修改插件目录以外文件/环境”的插件规范，也容易被宿主重启或未来版本破坏）。
+提示条小组件（`slot: "edge-bar"`）不创建窗口，**不接受非默认值**：在其中声明
+`windowLevel` / `windowMaterial` 会被清单校验直接拒绝。本插件当前只使用 2 个桌面小组件，
+未使用提示条槽位。
 
-## 3. 建议的宿主 API
+## 2. 本插件如何声明
 
-任选其一即可满足本需求，推荐方案 A：
-
-### 方案 A：widget 声明增加 `windowLevel`
+班级事务台 v1.2.0 的 2 张桌面浮窗都默认声明 `desktop` + `acrylic`，并把 `minAuroraVersion`
+抬到 `0.5.2`。清单片段如下（完整清单见
+[`class-management/manifest.json`](../class-management/manifest.json)）：
 
 ```json
 {
-  "id": "week-overview",
-  "title": "班级速览",
-  "slot": "desktop",
-  "windowLevel": "desktop",
-  "schema": "ui/widget-overview.json",
-  "defaultSize": { "width": 320, "height": 300 }
+  "version": "1.2.0",
+  "minAuroraVersion": "0.5.2",
+  "contributes": {
+    "widgets": [
+      {
+        "id": "week-overview",
+        "title": "班级速览",
+        "icon": "Gauge",
+        "slot": "desktop",
+        "windowLevel": "desktop",
+        "windowMaterial": "acrylic",
+        "schema": "ui/widget-overview.json",
+        "defaultSize": { "width": 320, "height": 300 }
+      },
+      {
+        "id": "week-tasks",
+        "title": "今日事务",
+        "icon": "ListChecks",
+        "slot": "desktop",
+        "windowLevel": "desktop",
+        "windowMaterial": "acrylic",
+        "schema": "ui/widget-tasks.json",
+        "defaultSize": { "width": 360, "height": 460 }
+      }
+    ]
+  }
 }
 ```
 
-- `windowLevel`：`"floating"`（默认，兼容现状）| `"normal"` | `"desktop"`；
-- `"normal"`：不设置 `alwaysOnTop`，按普通无边框窗口参与 z-order；
-- `"desktop"`：在 `"normal"` 基础上尽量放到普通窗口之下（Windows 可用 WorkerW / Progman 父窗口或等效层级方案）；
-- 由宿主在插件详情里为每个 widget 提供覆盖开关，便于用户临时改回置顶；
-- 插件 API 不需要新增方法，只扩展 manifest 与宿主窗口创建逻辑。
+| 浮窗 | widget id | 默认层级 | 默认材质 | 默认尺寸 |
+| --- | --- | --- | --- | --- |
+| 班级速览 | `week-overview` | `desktop` | `acrylic` | 320×300 |
+| 今日事务 | `week-tasks` | `desktop` | `acrylic` | 360×460 |
 
-### 方案 B：widget 声明增加布尔值
+- 插件只声明**默认值**：不创建窗口、不读取或修改宿主窗口属性，也不调用任何 Win32 API；
+  层级与材质的实际效果由宿主实现。
+- 沿用现有 `ui.widgets` 权限；这两个字段不引入新权限，也不需要新的插件 API。
+- 入口、schema、`defaultSize` 与 v1.1.0 相同，只增加默认层级与材质。
 
-```json
-{ "alwaysOnTop": false }
-```
+## 3. 用户如何覆盖层级
 
-实现简单，但表达力弱于 `windowLevel`；默认值必须为 `true` 以保持兼容。
+设置 → 插件 → 班级事务台 → 插件详情，每个桌面 widget 有一枚「显示在桌面」开关和一枚层级下拉：
 
-## 4. 验收标准
+| 下拉项 | 效果 |
+| --- | --- |
+| 跟随插件 | 使用清单声明的默认层级（本插件为 `desktop`） |
+| 置顶 | 按 `floating` 渲染，恢复 0.5.1 的置顶行为 |
+| 普通 | 按 `normal` 渲染，不置顶 |
+| 桌面层 | 按 `desktop` 渲染，尽力贴合桌面 |
 
-- 默认配置下，现有插件行为不变（仍为置顶卡片）；
-- 声明 `windowLevel: "normal"` 或 `"desktop"` 时，小组件不再覆盖其他普通应用窗口；
-- 显示桌面时小组件可见；
-- 拖动 / 缩放 / 显隐 / 多显示器夹取 / 重启后位置恢复与现状一致；
-- 插件卸载 / 停用 / 总开关关闭时窗口销毁逻辑不变；
-- 不要求新增插件权限；不改变提示条（edge-bar）行为。
+- 覆盖值由宿主写入 `<userData>/plugin-widget-layout.json` 的 `windowLevelOverride` 字段；
+  缺省表示跟随清单。
+- **插件不读取、也不修改 `plugin-widget-layout.json`**；用户改层级不需要重装插件，也不会
+  改到 `manifest.json`。
+- 关闭「显示在桌面」开关会销毁窗口，但保留布局条目；重新打开后沿用原位置。
 
-## 5. 已否决的插件侧 workaround
+## 4. 边界说明
 
-- 用 PowerShell / Win32 `SetWindowPos` 修改宿主窗口 z-order：超出插件 API、依赖窗口标题枚举、无法跨版本保证、违反插件规范；
-- 用页面型 widget 的 `window` API 调用层级方法：宿主 preload 只暴露 `auroraPlugin.request/onEvent`，没有窗口控制；
-- 将桌面小组件换成提示条（edge-bar）：提示条本身也是置顶，且交互形态不同，不能替代。
+- `desktop` 的语义是「普通窗口 + Win32 owner 亲和 + 恢复守护」，**不是**壁纸层嵌入、
+  **不是**桌面图标层、**也不是**点击穿透。浮窗仍是宿主创建的独立无边框窗口，不进入壁纸
+  或桌面图标层。
+- owner 亲和**属尽力而为**：宿主无法完成亲和（例如桌面 shell 结构变化）时回退 `normal`，
+  不会因此隐藏或销毁浮窗。
+- `desktop` 不置顶：浏览器、Office 等普通应用窗口被激活时可以覆盖浮窗。
+- Win+D / Win+M 后浮窗「尽量」保持可见，这是恢复守护带来的尽力而为，不是硬保证。
+- Acrylic **不是所有机器都生效**：仅 Windows 11 22H2 及以上且 `appearance.glass` 开启；
+  Windows 10、旧版 Windows 11、毛玻璃关闭或启用失败时都保持不透明卡片，不影响可用性。
+- `floating` 仍是宿主默认值；未声明这两个字段的插件行为不变。
 
-在宿主提供上述能力之前，本插件保留 2 张置顶浮窗，并通过减少数量、精简按钮与内容来降低打扰。
+## 5. 旧宿主（0.5.1）的行为与最低版本
+
+0.5.1 时代没有这两个字段：宿主把桌面 widget 的窗口层级硬编码为置顶
+（`alwaysOnTop: true`、`setAlwaysOnTop(true, 'floating')`），`contributes.widgets` 只有 `slot`，
+插件 API 也不提供窗口控制。这是旧文档记录的历史背景，已不再是当前限制。
+
+0.5.2 起宿主才识别这两个字段。0.5.1 会**静默忽略**未知字段：即使清单写了
+`windowLevel: "desktop"` / `windowMaterial: "acrylic"`，也仍按默认的 `floating` 渲染并且
+不会报错。因此本插件把 `minAuroraVersion` 声明为 `0.5.2`；低于该版本时不满足最低宿主版本
+要求，避免出现「声明了桌面层、实际却仍然置顶」的预期落差。
+
+## 6. 生效自查
+
+- 宿主为 0.5.2 及以上，插件为 v1.2.0 且状态「运行中」；
+- 插件详情里，两张浮窗在「跟随插件」（首次安装的默认状态）时显示「桌面层」；
+- 打开浏览器或 Office，浮窗可被普通应用窗口覆盖；回到桌面时浮窗仍在；
+- Win+D 后浮窗仍在桌面（尽力而为，失败时按 `normal` 处理）；
+- Windows 11 22H2 及以上且外观毛玻璃开启时卡片呈亚克力效果，否则为不透明卡片；
+- 把某张浮窗层级改为「置顶」可恢复 0.5.1 的置顶行为；改回「跟随插件」恢复桌面层。
