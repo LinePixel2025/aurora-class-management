@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "nodes": [
+    { "type": "text", "text": "正在读取本周事务…", "tone": "muted" },
+    { "type": "progress", "percent": 0 },
+    { "type": "text", "text": "点「管理台」打开班级管理台。", "tone": "muted" }
+  ]
+}

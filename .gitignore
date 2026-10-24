@@ -1,0 +1,15 @@
+# Aurora 官方插件开发工具包（第三方，不随本仓库分发）
+plugin-dev-kit/
+
+# 预览 / 测试缓存（字体、宿主校验器提取、截图 HTML）
+dev/.cache/
+
+# 构建产物（安装包通过 GitHub Releases 分发）
+dist/
+*.zip
+
+# 依赖 / 编辑器 / 系统文件
+node_modules/
+.vscode/
+Thumbs.db
+.DS_Store

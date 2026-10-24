@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "nodes": [
+    { "type": "text", "text": "正在读取本周安排…", "tone": "muted" },
+    {
+      "type": "list",
+      "items": [{ "label": "本周", "value": "—" }]
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "nodes": [
+    { "type": "text", "text": "正在读取本周值日…", "tone": "muted" },
+    { "type": "text", "text": "如果长时间停在这里，请在 设置 → 插件 里查看插件日志。", "tone": "muted" }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "nodes": [
+    { "type": "heading", "text": "班级事务台" },
+    { "type": "text", "text": "正在读取本周数据…", "tone": "muted" },
+    {
+      "type": "keyValue",
+      "items": [
+        { "label": "本周事务", "value": "—" },
+        { "label": "本周值日", "value": "—" }
+      ]
+    },
+    { "type": "divider" },
+    {
+      "type": "text",
+      "text": "读取失败时请重新打开面板；仍不行请查看插件日志。",
+      "tone": "muted"
+    }
+  ]
+}
