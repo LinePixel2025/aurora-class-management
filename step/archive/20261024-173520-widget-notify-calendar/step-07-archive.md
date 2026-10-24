@@ -2,7 +2,7 @@
 
 - Task: widget-notify-calendar
 - Step: 7 / 7
-- Status: pending
+- Status: done
 - Depends on: step 1..6
 - Produces: 本次计划文件整体移入 `step/archive/<YYYYMMDD-HHMMSS>-widget-notify-calendar/`，`step/` 顶层恢复干净
 - Phase: 测试与文档
@@ -78,5 +78,7 @@
 - 不顺手清理用户自己的其他文件或 git 历史。
 
 ## 执行记录
+
+- 归档于 2026-10-24 17:35，归档目录 `step/archive/20261024-173520-widget-notify-calendar`；本次计划文件（00-index + 7 个 step 文件）整体移动，未删除、未合并历史归档，`step/` 顶层无残留。
 
 （执行后填写：实际归档路径、文件数量、验证结果。）

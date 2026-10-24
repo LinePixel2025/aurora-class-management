@@ -4,8 +4,8 @@
 - 项目根目录：D:\AICOP\ClassManagement
 - 创建时间：2026-10-24 13:12
 - 基线提交：54719f5
-- 归档目录：（完成后填写）
-- 归档时间：（完成后填写）
+- 归档目录：step/archive/20261024-173520-widget-notify-calendar
+- 归档时间：2026-10-24 17:35
 
 ## 完成标准
 
@@ -46,7 +46,7 @@
 | 4 | step-04-calendar-backend.md | v2.0.0 班级周历后端与数据接口 | done | step 3 | `class-management/lib/calendar.js`、`class-management/lib/ops.js`、`class-management/main.js`、`dev/test-plugin.mjs` |
 | 5 | step-05-calendar-page.md | v2.0.0 页面型班级周历与预览 | done | step 4 | `class-management/manifest.json`、`class-management/main.js`、`class-management/lib/push.js`、`class-management/ui/calendar.html`、`class-management/ui/calendar.css`、`class-management/ui/calendar.js`、`dev/preview-calendar.mjs`、`dev/test-plugin.mjs`、`dev/.cache/` |
 | 6 | step-06-docs-build.md | v2.0.0 文档、截图与构建 | done | step 5 | `README.md`、`class-management/README.md`、`class-management/lib/panel.js`（集成修复）、`docs/images/calendar-dark.png`、`docs/images/calendar-light.png`、`dev/preview-calendar.mjs`、`dev/.cache/`、`dist/` |
-| 7 | step-07-archive.md | 归档清理 | pending | step 1..6 | `step/` |
+| 7 | step-07-archive.md | 归档清理 | done | step 1..6 | `step/` |
 
 > 状态口径：step 1–6 的 done 指离线验收完成；「真机手动核对」项（桌面层/Acrylic、通知投递、/calendar 页面交互与刷新持久化）待用户在 Aurora 0.5.2 真机确认后再归档。
 
@@ -68,4 +68,5 @@
 - step 3（2026-10-24）：v1.3.0 系统通知与定时提醒。提交 `c29e651`（7 文件，+507/-18；**71/71** = 原 59 + 新增 12 条通知测试）：新增 `lib/notify.js`、`notifications` 权限与 5 个配置字段、60 秒 tick 内通知检查与 `notify.v1` 去重；两份 README 同步通知配置。审查修复 `5f47d77`：截止提醒改为 `ops.loadTasksDueOn` 跨周扫描，窗口收紧为 `[dueTime - lead, dueTime]`，补「08:05 不再提醒 08:00 截止」「昨天登记今天截止仍提醒」2 条测试，**73/73**。
 - step 4（2026-10-24）：v2.0.0 班级周历后端。提交 `9d7b9a9`（4 文件，+561/-1；**81/81** = 73 + 8）：新增 `lib/calendar.js` 面板动作与 `lib/ops.js` 的 `loadWeekGrid` / `moveTask`，`main.js` 接入 `invokePanel`；页面、命令与推送目标留到 step 5。
 - step 5（2026-10-24）：v2.0.0 页面型班级周历。提交 `f830be5`（8 文件，+3417/-29；**88/88**）：`ui/calendar.html|css|js` 垂直 7 天时间线、事务增删改/拖动、安排/值日/通知编辑、过去周只读；新增 `calendar` 面板与 `/calendar` 命令，`pushAll` 推 2 面板 + 2 浮窗；`dev/preview-calendar.mjs` 生成 3 张页面截图。集成修复 `e0ec476`（声明式面板动作推送 4 目标，补 1 条断言）、`0da28dd`（页面弹层/窄栏布局/预览健壮性）。
+- 代码审查与修复（2026-10-24）：7 个独立审查子代理按维度复核（验收复跑 / 页面 CSP 与前端 / 后端边界 / 安全权限 / 测试质量 / 清单推送文档一致性 / 回归一致性）。修复 P1：周历页写动作未推送（现写动作成功后 pushAll 4 目标并拒绝过去周写）、页面用错宿主 onEvent 签名（改为 listener 形式并在 pagehide 取消）、索引执行记录缺 step 3-5；同步修复 dueLabel 未来日期仅填时间误显示“今天”、宿主“5 条上限”口径、manifest description、类型注释、build.ps1 增加 JS 语法检查与 zip 敏感文件断言。重跑后测试 98/98、check-plugin v2.0.0、两套 preview 退出码 0、构建 73.2 KB/SHA 574B…BC94。提交 `4a9a37c`（修复）、`3aa8128`（测试与文档回填）。遗留 P2/P3 见归档 REPORT.md。
 - step 6（2026-10-24）：根 README 与插件 README 更新到 v2.0.0（页面周历、3 命令、2 面板、88/88、页面沙箱、推送 4 条、故障排查、真机清单）；`docs/images/calendar-dark.png` / `calendar-light.png` 由真实页面预览生成；`scripts/build.ps1` 生成 `dist/class-management-2.0.0.zip`（73.2 KB，SHA-256 `574B2C…BC94`），根 README zip 行同步。提交 `91e1ee3`（文档/截图/构建产物信息）、`af30489`（执行记录回填）。集成期补充修复：声明式面板动作推送 4 目标（`e0ec476`）、页面弹层隐藏/窄栏布局/预览健壮性（`0da28dd`）。验收：check-plugin v2.0.0、test 98/98、两套 preview 退出码 0、build 退出码 0、zip 根含 manifest 且 SHA 与 README 一致、`git diff --check` 通过。
