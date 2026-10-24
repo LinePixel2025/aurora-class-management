@@ -7,19 +7,13 @@
  *   .cal-schedule-* / .cal-empty / .cal-status / .cal-btn*；
  * - html / body 透明，不画自己的底板：v2.1.0 宿主小组件卡片是不透明底色
  *   （windowMaterial: none），页面只负责标题栏以下的内容；
- * - 字号 11–13px、间距紧凑；唯一滚动容器是 .wd-app，内容超高时在窗口内滚动；
+ * - 整页排版随窗口宽度缩放：.wd-app 的基准字号是 clamp(13px, 3.6vw, 40px)，
+ *   其余字号 / 间距 / 控件尺寸都用 em。默认窗口（320 / 360 宽）约 13px，
+ *   把小组件拉大后整体等比放大，教室一体机 / 投屏时后排也能看清；
+ * - 唯一滚动容器是 .wd-app，内容超高时在窗口内滚动；
  * - 不渲染插件名 / 关闭 / 刷新等宿主 chrome。
  */
 
-:root {
-  --wd-gap: 4px;
-  --wd-pad-x: 11px;
-  --wd-pad-y: 8px;
-}
-
-/* ════════════════════════════════════════════
-   1. 透明底板与滚动容器
-   ════════════════════════════════════════════ */
 html,
 body {
   background: transparent;
@@ -42,7 +36,14 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* ════════════════════════════════════════════
+   1. 缩放基准、透明底板与滚动容器
+   ════════════════════════════════════════════ */
 .wd-app {
+  --wd-gap: 0.35em;
+  --wd-pad-x: 1em;
+  --wd-pad-y: 0.7em;
+
   display: flex;
   flex-direction: column;
   gap: var(--wd-gap);
@@ -55,6 +56,9 @@ body {
   overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: var(--cal-line-strong) transparent;
+  /* 教室投屏：窗口越宽字越大；40px 封顶避免超大窗口里一行只剩几个字 */
+  font-size: clamp(13px, 3.6vw, 40px);
+  line-height: 1.5;
 }
 
 .wd-app > * {
@@ -81,7 +85,7 @@ body {
    ════════════════════════════════════════════ */
 .wd-head {
   min-width: 0;
-  padding-bottom: 4px;
+  padding-bottom: 0.31em;
   border-bottom: 1px solid var(--cal-line);
 }
 
@@ -89,10 +93,10 @@ body {
 .wd-class-name {
   position: relative;
   margin: 0;
-  padding-bottom: 4px;
+  padding-bottom: 0.25em;
   color: var(--cal-text);
   font-family: var(--cal-font-display);
-  font-size: 16px;
+  font-size: 1.33em;
   font-weight: 700;
   line-height: 1.25;
   letter-spacing: 0.08em;
@@ -104,8 +108,8 @@ body {
   position: absolute;
   left: 1px;
   bottom: 0;
-  width: 34px;
-  height: 2px;
+  width: 2em;
+  height: 0.12em;
   border-radius: 2px;
   background: linear-gradient(90deg, var(--cal-accent), transparent);
 }
@@ -114,10 +118,10 @@ body {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 2px 6px;
-  margin-top: 3px;
+  gap: 0.18em 0.53em;
+  margin-top: 0.26em;
   color: var(--cal-muted);
-  font-size: 10.5px;
+  font-size: 0.875em;
   line-height: 1.4;
   letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
@@ -130,7 +134,7 @@ body {
 
 .wd-teacher::before {
   content: "·";
-  margin-right: 5px;
+  margin-right: 0.42em;
   color: var(--cal-faint);
 }
 
@@ -139,7 +143,7 @@ body {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 2px 8px;
+  gap: 0.17em 0.67em;
   min-width: 0;
 }
 
@@ -147,7 +151,7 @@ body {
   margin: 0;
   color: var(--cal-text);
   font-family: var(--cal-font-display);
-  font-size: 15px;
+  font-size: 1.25em;
   font-weight: 700;
   line-height: 1.25;
   letter-spacing: 0.1em;
@@ -156,7 +160,7 @@ body {
 .wd-tasks-date {
   color: var(--cal-accent);
   font-family: var(--cal-font-mono);
-  font-size: 11px;
+  font-size: 0.92em;
   line-height: 1.4;
   letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
@@ -172,22 +176,22 @@ body {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 2px 7px;
-  margin-top: 3px;
+  gap: 0.17em 0.58em;
+  margin-top: 0.25em;
   font-variant-numeric: tabular-nums;
 }
 
 .wd-stat {
   display: inline-flex;
   align-items: baseline;
-  gap: 3px;
+  gap: 0.25em;
   white-space: nowrap;
 }
 
 .wd-stat-value {
   color: var(--cal-text);
   font-family: var(--cal-font-mono);
-  font-size: 14px;
+  font-size: 1.17em;
   font-weight: 600;
   line-height: 1.1;
   letter-spacing: -0.02em;
@@ -199,7 +203,7 @@ body {
 
 .wd-stat-label {
   color: var(--cal-muted);
-  font-size: 10.5px;
+  font-size: 0.875em;
   line-height: 1.4;
   letter-spacing: 0.04em;
 }
@@ -208,10 +212,10 @@ body {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 0 6px;
+  gap: 0.25em;
+  padding: 0 0.5em;
   border-radius: 999px;
-  font-size: 10px;
+  font-size: 0.83em;
   line-height: 1.7;
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -226,15 +230,15 @@ body {
   margin-left: auto;
   color: var(--cal-accent);
   font-family: var(--cal-font-mono);
-  font-size: 11px;
+  font-size: 0.92em;
   line-height: 1.4;
   letter-spacing: 0.02em;
 }
 
 .wd-progress {
   position: relative;
-  height: 3px;
-  margin-top: 4px;
+  height: 0.23em;
+  margin-top: 0.31em;
   overflow: hidden;
   border-radius: 999px;
   background: var(--cal-surface-sunken);
@@ -259,14 +263,14 @@ body {
 .wd-section {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0.17em;
   min-width: 0;
 }
 
 /* 与周历 .cal-section-title 同款，但小组件更小一号 */
 .wd-section .cal-section-title {
-  gap: 6px;
-  font-size: 9.5px;
+  gap: 0.6em;
+  font-size: 0.79em;
   line-height: 1.2;
   letter-spacing: 0.14em;
 }
@@ -275,7 +279,7 @@ body {
   flex: 0 0 auto;
   color: var(--cal-faint);
   font-family: var(--cal-font-mono);
-  font-size: 9.5px;
+  font-size: 0.79em;
   font-weight: 400;
   letter-spacing: 0.02em;
 }
@@ -287,7 +291,7 @@ body {
 .wd-more {
   margin: 0;
   color: var(--cal-faint);
-  font-size: 9.5px;
+  font-size: 0.79em;
   font-weight: 400;
   line-height: 1.4;
   letter-spacing: 0.02em;
@@ -306,8 +310,9 @@ body {
 .wd-empty,
 .wd-app .cal-empty {
   margin: 0;
-  padding: 5px 8px;
-  font-size: 11px;
+  padding: 0.42em 0.67em;
+  border-radius: 0.58em;
+  font-size: 0.92em;
   line-height: 1.5;
 }
 
@@ -318,7 +323,7 @@ body {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 2px 6px;
+  gap: 0.17em 0.5em;
   min-width: 0;
 }
 
@@ -326,14 +331,14 @@ body {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 0.33em;
   max-width: 100%;
-  padding: 0 7px 0 5px;
+  padding: 0 0.58em 0 0.42em;
   border: 1px solid var(--cal-duty-soft);
   border-radius: 999px;
   background: var(--cal-duty-soft);
   color: var(--cal-text-soft);
-  font-size: 10.5px;
+  font-size: 0.875em;
   line-height: 1.6;
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -342,11 +347,11 @@ body {
 .wd-duty-group::before {
   content: "";
   flex: 0 0 auto;
-  width: 5px;
-  height: 5px;
+  width: 0.44em;
+  height: 0.44em;
   border-radius: 50%;
   background: var(--cal-duty);
-  box-shadow: 0 0 0 2px var(--cal-duty-soft);
+  box-shadow: 0 0 0 0.18em var(--cal-duty-soft);
 }
 
 .wd-duty-group.is-empty {
@@ -361,11 +366,11 @@ body {
 }
 
 .wd-duty-members {
-  flex: 1 1 80px;
+  flex: 1 1 6.67em;
   min-width: 0;
   overflow: hidden;
   color: var(--cal-muted);
-  font-size: 10.5px;
+  font-size: 0.875em;
   line-height: 1.45;
   letter-spacing: 0.01em;
   text-overflow: ellipsis;
@@ -380,7 +385,7 @@ body {
   margin: 0;
   overflow: hidden;
   color: var(--cal-faint);
-  font-size: 10px;
+  font-size: 0.83em;
   line-height: 1.45;
   overflow-wrap: anywhere;
   display: -webkit-box;
@@ -399,7 +404,7 @@ body {
 .wd-schedule-list {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 0.08em;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -411,22 +416,24 @@ body {
 }
 
 .wd-app .cal-schedule-row {
-  padding: 1px 6px;
-  font-size: 11px;
+  gap: 0.55em;
+  padding: 0.08em 0.5em;
+  border-radius: 0.35em 0.7em 0.7em 0.35em;
+  font-size: 0.92em;
   line-height: 1.4;
   cursor: default;
 }
 
 .wd-app .cal-schedule-time {
-  font-size: 10px;
+  font-size: 0.83em;
 }
 
 .wd-app .cal-schedule-place {
-  font-size: 9.5px;
+  font-size: 0.79em;
 }
 
 .wd-sched-row {
-  border-left-width: 2px;
+  border-left-width: 0.17em;
 }
 
 .wd-sched-row.is-today {
@@ -446,12 +453,12 @@ body {
 .wd-today-tag {
   flex: 0 0 auto;
   align-self: center;
-  padding: 0 4px;
-  border-radius: 4px;
+  padding: 0 0.45em;
+  border-radius: 0.45em;
   background: var(--cal-accent);
   color: var(--cal-accent-ink);
   font-family: var(--cal-font-body);
-  font-size: 9px;
+  font-size: 0.75em;
   line-height: 1.6;
   letter-spacing: 0.04em;
 }
@@ -464,7 +471,7 @@ body {
   max-height: 2.8em;
   overflow: hidden;
   color: var(--cal-text-soft);
-  font-size: 11px;
+  font-size: 0.92em;
   line-height: 1.4;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -477,7 +484,7 @@ body {
 .wd-announcement.is-empty {
   max-height: 1.6em;
   color: var(--cal-faint);
-  font-size: 11px;
+  font-size: 0.92em;
   -webkit-line-clamp: 1;
   line-clamp: 1;
 }
@@ -488,20 +495,20 @@ body {
 .wd-quick {
   display: flex;
   align-items: stretch;
-  gap: 6px;
+  gap: 0.5em;
   min-width: 0;
 }
 
 .wd-quick-input {
   flex: 1 1 auto;
   min-width: 0;
-  min-height: 26px;
-  padding: 3px 8px;
+  min-height: 2.17em;
+  padding: 0.25em 0.67em;
   border: 1px solid var(--cal-line);
-  border-radius: 7px;
+  border-radius: 0.58em;
   background: var(--cal-surface-sunken);
   color: var(--cal-text);
-  font: 400 11.5px/1.4 var(--cal-font-body);
+  font: 400 0.96em/1.4 var(--cal-font-body);
   transition: border-color 120ms ease;
 }
 
@@ -519,19 +526,18 @@ body {
 
 .wd-quick .cal-btn {
   flex: 0 0 auto;
-  min-height: 26px;
-  padding: 3px 11px;
-  font-size: 11.5px;
+  min-height: 2.17em;
+  padding: 0.25em 0.9em;
+  border-radius: 0.58em;
+  font-size: 0.96em;
 }
 
 .wd-app .cal-status {
   margin: 0;
-  font-size: 10.5px;
+  padding: 0.33em 0.67em;
+  border-radius: 0.58em;
+  font-size: 0.875em;
   line-height: 1.4;
-}
-
-.wd-app .cal-status:not(:empty) {
-  padding: 4px 8px;
 }
 
 /* ════════════════════════════════════════════
@@ -551,23 +557,24 @@ body {
 .wd-task {
   flex-wrap: nowrap;
   align-items: flex-start;
-  gap: 6px;
-  margin: 0 -4px;
-  padding: 1px 4px;
+  gap: 0.5em;
+  margin: 0 -0.33em;
+  padding: 0.08em 0.33em;
+  border-radius: 0.58em;
 }
 
 .wd-task .cal-task-toggle {
-  width: 17px;
-  height: 17px;
-  margin-top: 1px;
-  font-size: 9px;
+  width: 1.8em;
+  height: 1.8em;
+  margin-top: 0.1em;
+  font-size: 0.75em;
 }
 
 .wd-task-main {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: 1px;
+  gap: 0.08em;
   min-width: 0;
 }
 
@@ -580,19 +587,19 @@ body {
 
 .wd-task .cal-task-text {
   display: inline;
-  font-size: 12px;
+  font-size: 1em;
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
 
 .wd-high {
   display: inline-block;
-  margin-right: 4px;
-  padding: 0 3px;
-  border-radius: 3px;
+  margin-right: 0.4em;
+  padding: 0 0.3em;
+  border-radius: 0.3em;
   background: var(--cal-danger-soft);
   color: var(--cal-danger);
-  font-size: 9px;
+  font-size: 0.75em;
   line-height: 1.5;
   letter-spacing: 0.02em;
   vertical-align: 1px;
@@ -604,7 +611,7 @@ body {
 }
 
 .wd-task .cal-task-meta {
-  font-size: 9.5px;
+  font-size: 0.79em;
   line-height: 1.35;
   letter-spacing: 0.01em;
   white-space: normal;
@@ -619,12 +626,12 @@ body {
 .wd-task-del {
   flex: 0 0 auto;
   margin-left: 0;
-  min-height: 20px;
-  padding: 0 6px;
+  min-height: 2em;
+  padding: 0 0.5em;
   border: 1px solid transparent;
-  border-radius: 5px;
+  border-radius: 0.42em;
   color: var(--cal-muted);
-  font-size: 10px;
+  font-size: 0.83em;
   line-height: 1.5;
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -647,17 +654,17 @@ body {
    9. 窄窗口（320px）适配
    ════════════════════════════════════════════ */
 @media (max-width: 340px) {
-  :root {
-    --wd-gap: 3px;
-    --wd-pad-x: 9px;
-    --wd-pad-y: 7px;
+  .wd-app {
+    --wd-gap: 0.25em;
+    --wd-pad-x: 0.7em;
+    --wd-pad-y: 0.55em;
   }
 
   .wd-stat-row {
-    gap: 2px 6px;
+    gap: 0.17em 0.5em;
   }
 
   .wd-task-del {
-    padding: 0 5px;
+    padding: 0 0.42em;
   }
 }

@@ -227,7 +227,7 @@ function createContext(options) {
     ...(settings.config || {}),
   }
   const ctx = {
-    plugin: { id: PLUGIN_ID, version: '2.1.1', root: PLUGIN, dataDir: PLUGIN, isDev: true },
+    plugin: { id: PLUGIN_ID, version: '2.1.2', root: PLUGIN, dataDir: PLUGIN, isDev: true },
     config,
     storage: {
       async get(key) {
@@ -673,9 +673,9 @@ async function mainTest() {
   // ═════════════════════════ 清单 ═════════════════════════
 
   header('清单与页面化声明')
-  await test('清单基础字段（版本 2.1.1 / 入口 / 激活方式）', async () => {
+  await test('清单基础字段（版本 2.1.2 / 入口 / 激活方式）', async () => {
     assertEqual(manifest.id, PLUGIN_ID)
-    assertEqual(manifest.version, '2.1.1')
+    assertEqual(manifest.version, '2.1.2')
     assertEqual(manifest.apiVersion, 1)
     assertEqual(manifest.minAuroraVersion, '0.5.3')
     assertEqual(manifest.main, 'main.js')

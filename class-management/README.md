@@ -8,7 +8,7 @@
 用自然语言就能改值日、加事务、排安排。
 
 - 插件 id：`com.classmanagement.board`
-- 版本：`2.1.1`（插件 API v1，Aurora ≥ 0.5.3）
+- 版本：`2.1.2`（插件 API v1，Aurora ≥ 0.5.3）
 - 权限：`tools` / `skills` / `commands` / `storage` / `config` / `logging` / `ui.panels` / `ui.widgets` / `notifications`
 - 面板：页面型「班级事务台」（`/class`，4 视图）+ 页面型「班级周历」（`/calendar`，垂直 7 天时间线）
 - 小组件：`windowLevel: "desktop"`、`windowMaterial: "none"`（不启用原生毛玻璃）
@@ -19,7 +19,7 @@
 ### 方式 A：安装插件包（推荐）
 
 1. 在项目根目录运行 `powershell -ExecutionPolicy Bypass -File scripts\build.ps1`，得到
-   `dist/class-management-2.1.1.zip`（zip 根目录直接是 `manifest.json`）；
+   `dist/class-management-2.1.2.zip`（zip 根目录直接是 `manifest.json`）；
 2. Aurora → 设置 → 插件 → 已安装 → **安装插件包**，选择该 zip；
 3. 核对权限与工具后安装。安装完成后桌面出现 2 张小组件，右栏可打开「班级事务台」或「班级周历」。
 4. 如需免掉只读工具的逐次确认，在插件详情点「信任此插件」。
@@ -44,6 +44,8 @@
 | 今日事务 | 今日日期与计数、完成率、快速添加、待办行（完成/恢复、截止信息、删除）、已完成区（显示时可恢复/删除）、本周安排（今天高亮） | 360×460 | 页面型 `ui/widget-tasks.html` | `desktop` | `none` |
 
 - 都是 Aurora 的**桌面层小组件**（无边框、不占任务栏），可拖动、缩放；位置 / 尺寸 / 显隐由 Aurora 持久化，重启后保留。
+- **字号随窗口缩放**：文字、间距与控件一起按窗口宽度等比放大（默认约 13px，最大 40px）；
+  教室一体机 / 投屏时把窗口拉大即可让后排看清，内容放不下时在窗口内滚动。
 - **右上角无关闭键**：两张小组件声明 `hideCloseButton: true`，标题栏只保留标题；
   隐藏 / 恢复在 设置 → 插件 → 班级事务台 →「显示在桌面」。该字段需要支持它的 Aurora 版本，旧宿主会忽略。
 - `desktop` 是尽力而为：宿主按“普通窗口 + Win32 owner 亲和 + 恢复守护”实现，owner 亲和失败时回退普通层（`normal`）；
@@ -196,9 +198,9 @@ README.md                  本说明（随插件包发布）
 在项目根目录：
 
 ```powershell
-node plugin-dev-kit/tools/check-plugin.mjs class-management   # 清单 / 权限 / 静态校验（v2.1.1）
+node plugin-dev-kit/tools/check-plugin.mjs class-management   # 清单 / 权限 / 静态校验（v2.1.2）
 node dev/test-plugin.mjs                                      # 离线全链路测试（mock 宿主 + 宿主原版 zod 清单解析，148/148）
-node dev/preview.mjs                                          # 事务台 4 视图 + 2 张小组件页面预览与截图（dev/.cache）
+node dev/preview.mjs                                          # 事务台 4 视图 + 小组件（含课堂放大）预览与截图（dev/.cache）
 node dev/preview-calendar.mjs                                 # 页面型「班级周历」预览与截图（dev/.cache）
 powershell -ExecutionPolicy Bypass -File scripts/build.ps1    # 校验 + 测试 + 打 zip
 ```
@@ -208,7 +210,7 @@ powershell -ExecutionPolicy Bypass -File scripts/build.ps1    # 校验 + 测试 
 - `dev/preview.mjs` / `dev/preview-calendar.mjs` 把真实的页面 HTML/CSS/JS 合成一份可用 `file://` 打开的预览页，
   注入只读 mock `window.auroraPlugin` 后交给本机 Chrome / Edge headless 截图；产物只写在 `dev/.cache/`，
   不随插件包发布；README 配图由这些图拷入 `docs/images/`。
-- 当前离线验证：`check-plugin.mjs` 通过（v2.1.1），`dev/test-plugin.mjs` **148/148 通过**。
+- 当前离线验证：`check-plugin.mjs` 通过（v2.1.2），`dev/test-plugin.mjs` **148/148 通过**。
 
 ### 已知平台特性（Aurora 0.5.3）
 

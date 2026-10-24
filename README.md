@@ -2,7 +2,7 @@
 
 > GitHub：<https://github.com/LinePixel2025/aurora-class-management>
 
-插件 **v2.1.1**，最低宿主 **Aurora 0.5.3（插件 API v1）**。班级事务管理系统：
+插件 **v2.1.2**，最低宿主 **Aurora 0.5.3（插件 API v1）**。班级事务管理系统：
 
 - **2 张页面型桌面小组件**：班级速览（含本周值日）与今日事务（含本周安排）——桌面层、不启用毛玻璃，可拖动 / 缩放，位置由 Aurora 记住；右上角无关闭键，小组件里可直接快速添加、完成 / 恢复、删除今日待办；
 - **2 个页面型右栏面板**：**班级事务台**（`/class`，今日 / 值日 / 安排 / 设置 4 视图）与**班级周历**（`/calendar`，垂直 7 天时间线），两者共用同一套「黑板 / 备课本」设计系统，都可直接删除事务与安排；
@@ -20,7 +20,7 @@
 
 ![班级事务台 · 今日（完整内容）](docs/images/panel-board-full-dark.png)
 
-更多截图：[事务台编辑弹层](docs/images/panel-board-edit-dark.png) · [空今日](docs/images/panel-board-empty-dark.png) · [删除确认弹层](docs/images/board-confirm-dark.png) · [值日](docs/images/panel-duty-dark.png) · [安排](docs/images/panel-schedule-dark.png) · [过去周只读](docs/images/panel-schedule-past-dark.png) · [设置](docs/images/panel-settings-dark.png) · [事务台浅色](docs/images/panel-board-light.png) · [浅色小组件](docs/images/widgets-light.png) · [空小组件](docs/images/widgets-empty-dark.png) · [周历浅色](docs/images/calendar-light.png)
+更多截图：[小组件课堂放大](docs/images/widgets-classroom-dark.png) · [事务台编辑弹层](docs/images/panel-board-edit-dark.png) · [空今日](docs/images/panel-board-empty-dark.png) · [删除确认弹层](docs/images/board-confirm-dark.png) · [值日](docs/images/panel-duty-dark.png) · [安排](docs/images/panel-schedule-dark.png) · [过去周只读](docs/images/panel-schedule-past-dark.png) · [设置](docs/images/panel-settings-dark.png) · [事务台浅色](docs/images/panel-board-light.png) · [浅色小组件](docs/images/widgets-light.png) · [空小组件](docs/images/widgets-empty-dark.png) · [周历浅色](docs/images/calendar-light.png)
 
 ## 交付物
 
@@ -38,7 +38,7 @@ class-management/                 插件包（zip 根目录）
   ui/widget-overview.html|js      页面型桌面小组件「班级速览」
   ui/widget-tasks.html|js         页面型桌面小组件「今日事务」
   ui/widget.css                   两张小组件共用的紧凑样式
-GitHub Releases（安装包附件，仓库外）  v2.1.1 安装包；本地构建输出 dist/class-management-2.1.1.zip（已 gitignore）
+GitHub Releases（安装包附件，仓库外）  v2.1.2 安装包；本地构建输出 dist/class-management-2.1.2.zip（已 gitignore）
 dev/test-plugin.mjs               离线全链路测试（mock 宿主 + 宿主原版 zod 清单解析，148/148）
 dev/preview.mjs                   页面型事务台 / 小组件预览与截图（生成 dev/.cache，可拷入 docs/images）
 dev/preview-calendar.mjs          页面型周历预览与截图（合成页面 + mock auroraPlugin）
@@ -62,7 +62,7 @@ docs/aurora-widget-desktop-level.md  Aurora 桌面层与页面型小组件能力
    powershell -ExecutionPolicy Bypass -File scripts\build.ps1
    ```
 
-   产物为 `dist\class-management-2.1.1.zip`。
+   产物为 `dist\class-management-2.1.2.zip`。
 
 2. Aurora → 设置 → 插件 → 已安装 → **安装插件包**，选择下载的 zip；
 3. 核对权限、工具后安装。桌面上会出现 2 张小组件；右栏「插件面板」或 `/class` / `/calendar` 可打开事务台与周历。
@@ -93,6 +93,8 @@ docs/aurora-widget-desktop-level.md  Aurora 桌面层与页面型小组件能力
 | 今日事务 | 今日日期与计数、完成率、快速添加、待办行（完成 / 恢复、截止信息、删除）、已完成区（可恢复 / 删除）、本周安排（今天高亮） | 360×460 | 页面型 `ui/widget-tasks.html` | `desktop` / `none` |
 
 - 都是 Aurora 的**桌面层小组件**（无边框、不占任务栏），可拖动、缩放；位置与显隐由 Aurora 持久化。
+- **字号随窗口缩放**：文字、间距与控件一起按窗口宽度等比放大（默认约 13px，最大 40px）。
+  在教室一体机 / 投屏上把小组件拉到半屏或全屏，后排也能看清；内容放不下时在窗口内滚动。
 - **右上角不显示关闭键**：两张小组件声明 `hideCloseButton: true`，宿主标题栏只保留标题；
   隐藏 / 恢复改到 设置 → 插件 → 班级事务台 →「显示在桌面」。该字段需要支持它的 Aurora 版本，旧宿主会忽略。
 - `desktop` 是尽力而为：宿主按“普通窗口 + Win32 owner 亲和 + 恢复守护”实现，owner 亲和失败时回退普通层（`normal`）。
@@ -156,7 +158,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 
 当前离线验证结果：
 
-- `check-plugin.mjs`：通过（`com.classmanagement.board` v2.1.1，2 个页面型面板、2 个页面型桌面小组件、3 条命令）；
+- `check-plugin.mjs`：通过（`com.classmanagement.board` v2.1.2，2 个页面型面板、2 个页面型桌面小组件、3 条命令）；
 - `dev/test-plugin.mjs`：**148/148 项检查通过**；
   覆盖时间 / 周次、存储读取、串行并发写、旧数据迁移、2 个页面型小组件、12 个工具、页面型事务台 4 视图与全部动作
   （含已完成事务删除、安排删除、值日 / 分组 / 通知 / 清理 / 示例周）、页面型周历（7 天 load、事务与安排动作、拖动、
@@ -164,9 +166,10 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1
   （三类通知的开关 / 提醒时间 / 去重 / 重启后不重发）、整周计划失败回滚、跨天 / 跨周刷新、容量修剪，
   以及页面静态约束（无内联脚本 / 事件、无 fetch / 本地存储 / 外链、相对资源存在）；
 - 清单通过从本机 Aurora 提取的宿主原版 zod `parsePluginManifest`；
-- `node dev/preview.mjs`：生成事务台 4 视图 / 空态 / 浅色 / 弹层与 2 张小组件共 12 张截图到 `dev/.cache/`；
+- `node dev/preview.mjs`：生成事务台 4 视图 / 空态 / 浅色 / 弹层与 2 张小组件共 13 张截图到 `dev/.cache/`
+  （含 640×520 / 720×900 的课堂放大预览，验证字号随窗口缩放）；
   `node dev/preview-calendar.mjs`：生成周历 3 张截图；README 配图由这些图拷入 `docs/images/`；
-- `dist/class-management-2.1.1.zip`：112.0 KB，SHA-256 `CD876CA9ACE9337D5A66CE65E6748CEA51BA6F60ABAF126B976CFF6543BB87D4`；
+- `dist/class-management-2.1.2.zip`：112.4 KB，SHA-256 `87E4428D51A3C2959D6C6ED63D4E3C3A7E2C72B86B46B37EE20F383D8A1CD1DE`；
   manifest 在 zip 根，条目使用正斜杠，无 `node_modules` / `dev/` / 缓存文件。
 
 真机验收清单（需要你在 Aurora 里点一遍）：

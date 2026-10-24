@@ -12,7 +12,8 @@
  *      onEvent 返回空取消函数（不推送事件）；
  *   4. 用 html[data-theme="dark"|"light"] 强制主题（不依赖系统主题）；
  *   5. 面板截图宽度固定 470px（与 README 旧图一致），高度先渲染量 scrollHeight 再截图；
- *      小组件按宿主真实可视区域 320×(300-28) / 360×(460-28) 放进模拟的 28px 宿主标题栏里；
+ *      小组件按宿主真实可视区域 320×(300-28) / 360×(460-28) 放进模拟的 28px 宿主标题栏里，
+ *      另出一组放大到 640×520 / 720×900 的「课堂投屏」预览，验证字号随窗口宽度缩放；
  *   6. 产物全部写到 dev/.cache/（gitignore），只用于开发与 docs/images 配图。
  *
  * 运行：node dev/preview.mjs
@@ -60,10 +61,25 @@ const FILES = {
   calendarCss: path.join(UI_DIR, 'calendar.css'),
 }
 
-// manifest 里的两张桌面小组件（defaultSize 与宿主可视区域换算用）。
+// manifest 里的两张桌面小组件（defaultSize 与宿主可视区域换算用）；
+// classroom 是「教室一体机 / 投屏」预览用的放大尺寸，用来验证字号随窗口缩放。
 const WIDGETS = [
-  { id: 'week-overview', title: '班级速览', file: 'widget-overview', width: 320, height: 300 },
-  { id: 'week-tasks', title: '今日事务', file: 'widget-tasks', width: 360, height: 460 },
+  {
+    id: 'week-overview',
+    title: '班级速览',
+    file: 'widget-overview',
+    width: 320,
+    height: 300,
+    classroom: { width: 640, height: 520 },
+  },
+  {
+    id: 'week-tasks',
+    title: '今日事务',
+    file: 'widget-tasks',
+    width: 360,
+    height: 460,
+    classroom: { width: 720, height: 900 },
+  },
 ]
 
 // 小组件并排预览页的外框尺寸：卡片 + 28px 模拟宿主标题栏 + 页面留白。
@@ -71,10 +87,22 @@ const SHOWCASE_GAP = 22
 const SHOWCASE_PADDING_X = 24
 const SHOWCASE_PADDING_TOP = 22
 const SHOWCASE_PADDING_BOTTOM = 26
-const SHOWCASE_WIDTH =
-  WIDGETS.reduce((total, widget) => total + widget.width, 0) + SHOWCASE_GAP * (WIDGETS.length - 1) + SHOWCASE_PADDING_X * 2
-const SHOWCASE_HEIGHT =
-  Math.max.apply(null, WIDGETS.map((widget) => widget.height)) + SHOWCASE_PADDING_TOP + SHOWCASE_PADDING_BOTTOM
+
+function showcaseSize(widgets) {
+  return {
+    width:
+      widgets.reduce((total, widget) => total + widget.width, 0) +
+      SHOWCASE_GAP * (widgets.length - 1) +
+      SHOWCASE_PADDING_X * 2,
+    height:
+      Math.max.apply(
+        null,
+        widgets.map((widget) => widget.height),
+      ) +
+      SHOWCASE_PADDING_TOP +
+      SHOWCASE_PADDING_BOTTOM,
+  }
+}
 
 // ───────────────────────── Chrome / Edge ─────────────────────────
 
@@ -669,6 +697,8 @@ function buildWidgetsShowcase(options) {
   const theme = options.theme
   const innerFiles = options.innerFiles
   const calendarCss = options.calendarCss
+  const widgets = options.widgets
+  const size = showcaseSize(widgets)
 
   const showcaseCss = `
 *,
@@ -678,8 +708,8 @@ function buildWidgetsShowcase(options) {
 html, body { margin: 0; padding: 0; }
 
 body {
-  width: ${SHOWCASE_WIDTH}px;
-  height: ${SHOWCASE_HEIGHT}px;
+  width: ${size.width}px;
+  height: ${size.height}px;
   padding: ${SHOWCASE_PADDING_TOP}px ${SHOWCASE_PADDING_X}px ${SHOWCASE_PADDING_BOTTOM}px;
   overflow: hidden;
   background-color: var(--cal-bg);
@@ -759,7 +789,7 @@ body {
 }
 `
 
-  const cards = WIDGETS.map(function (widget) {
+  const cards = widgets.map(function (widget) {
     const bodyHeight = widget.height - WIDGET_TITLE_BAR
     const innerFile = innerFiles[widget.id]
     if (typeof innerFile !== 'string' || innerFile === '') {
@@ -866,6 +896,8 @@ function widgetPreviews() {
     { name: 'widgets-dark', theme: 'dark', variant: 'dark', label: '两张小组件并排 · 深色' },
     { name: 'widgets-light', theme: 'light', variant: 'light', label: '两张小组件并排 · 浅色' },
     { name: 'widgets-empty-dark', theme: 'dark', variant: 'empty-dark', label: '两张小组件并排 · 空态' },
+    // 教室一体机 / 投屏：把窗口拉大后字号随宽度等比放大（640×520 / 720×900）
+    { name: 'widgets-classroom-dark', theme: 'dark', variant: 'classroom-dark', label: '两张小组件放大 · 课堂投屏', classroom: true },
   ]
 }
 
@@ -936,11 +968,15 @@ async function mainRun() {
     writeFile(path.join(CACHE, `${preview.name}.html`), html)
   }
 
-  // ── 小组件：先出 6 张 inner 页，再出 3 张并排展示页 ──
+  // ── 小组件：先出 inner 页，再出并排展示页（默认 / 课堂放大两套尺寸）──
   const showcasePages = []
   for (const preview of widgetPreviews()) {
+    const widgets = WIDGETS.map((widget) => {
+      const size = preview.classroom === true ? widget.classroom : widget
+      return { id: widget.id, title: widget.title, file: widget.file, width: size.width, height: size.height }
+    })
     const innerFiles = {}
-    for (const widget of WIDGETS) {
+    for (const widget of widgets) {
       const innerName = `${widget.file}-${preview.variant}.inner.html`
       const innerHtml = buildWidgetPage({
         html: widget.id === 'week-overview' ? source.overviewHtml : source.tasksHtml,
@@ -959,10 +995,16 @@ async function mainRun() {
     const showcaseHtml = buildWidgetsShowcase({
       theme: preview.theme,
       innerFiles,
+      widgets,
       calendarCss: source.calendarCss,
     })
     writeFile(path.join(CACHE, `${preview.name}.html`), showcaseHtml)
-    showcasePages.push({ preview, htmlName: `${preview.name}.html`, pngName: `${preview.name}.png` })
+    showcasePages.push({
+      preview,
+      size: showcaseSize(widgets),
+      htmlName: `${preview.name}.html`,
+      pngName: `${preview.name}.png`,
+    })
   }
 
   const chrome = findChrome()
@@ -994,13 +1036,14 @@ async function mainRun() {
   for (const showcase of showcasePages) {
     const htmlPath = path.join(CACHE, showcase.htmlName)
     const pngPath = path.join(CACHE, showcase.pngName)
-    const stat = screenshot(chrome, htmlPath, pngPath, SHOWCASE_WIDTH, SHOWCASE_HEIGHT)
+    const { width, height } = showcase.size
+    const stat = screenshot(chrome, htmlPath, pngPath, width, height)
     const done = stat !== null
     process.stdout.write(
-      `  ${done ? '✓' : '✗'} ${pngPath}（${SHOWCASE_WIDTH}×${SHOWCASE_HEIGHT}${done ? `，${Math.round(stat.size / 1024)} KB` : ''}）\n`,
+      `  ${done ? '✓' : '✗'} ${pngPath}（${width}×${height}${done ? `，${Math.round(stat.size / 1024)} KB` : ''}）\n`,
     )
     if (!done) failures += 1
-    else results.push({ file: pngPath, size: stat.size, width: SHOWCASE_WIDTH, height: SHOWCASE_HEIGHT })
+    else results.push({ file: pngPath, size: stat.size, width, height })
   }
 
   if (failures > 0) {
