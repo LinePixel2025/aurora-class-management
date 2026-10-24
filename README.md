@@ -36,7 +36,7 @@ docs/images/                       README 用截图（预览脚本生成后拷�
 
 ### 方式 A：安装插件包（推荐）
 
-1. 从 [Releases](https://github.com/LinePixel2025/aurora-class-management/releases) 下载 `class-management-1.0.0.zip`；或本地构建：
+1. 直接下载 [class-management-1.0.0.zip](https://github.com/LinePixel2025/aurora-class-management/releases/download/v1.0.0/class-management-1.0.0.zip)；或从 [Releases](https://github.com/LinePixel2025/aurora-class-management/releases) 选择版本；或本地构建：
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File scripts\build.ps1
