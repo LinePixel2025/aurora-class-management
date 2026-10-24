@@ -13,8 +13,8 @@ const { DataError, ensureBoard } = require('./lib/state')
 const ops = require('./lib/ops')
 const { overViewText, taskListText, planSummaryText } = require('./lib/text')
 const { pushAll, pushPanel, WIDGET_IDS, PANEL_ID } = require('./lib/push')
-const { widgetSchema } = require('./lib/widgets')
-const { renderPanel, handlePanelAction } = require('./lib/panel')
+const { handleBoardPanel } = require('./lib/board-page')
+const { handleWidgetPage } = require('./lib/widget-page')
 const { handleCalendarPanel, CALENDAR_PANEL_ID } = require('./lib/calendar')
 const { checkNotifications } = require('./lib/notify')
 
@@ -37,14 +37,6 @@ function fail(content) {
 
 function validName(name) {
   return typeof name === 'string' && name !== ''
-}
-
-function extractParams(params) {
-  const raw = params !== null && typeof params === 'object' ? params : {}
-  return {
-    actionParams: raw.params !== null && typeof raw.params === 'object' ? raw.params : {},
-    values: raw.values !== null && typeof raw.values === 'object' ? raw.values : {},
-  }
 }
 
 async function runTool(name, input, ctx) {
@@ -230,58 +222,12 @@ module.exports = {
   async invokePanel(panelId, method, params, ctx) {
     if (panelId === CALENDAR_PANEL_ID) return handleCalendarPanel(panelId, method, params, ctx)
     if (panelId !== PANEL_ID) return {}
-    return handlePanelAction(panelId, method, params, ctx)
+    return handleBoardPanel(panelId, method, params, ctx)
   },
 
   async invokeWidget(widgetId, method, params, ctx) {
     if (!WIDGET_IDS.includes(widgetId)) return {}
-    const { actionParams, values } = extractParams(params)
-    const name = typeof method === 'string' ? method : ''
-    try {
-      if (name === 'quick-add') {
-        const data = await ops.loadWeek(ctx, 0)
-        const bind = `quickTask_${data.ui.quickRev}`
-        const text = clip(values[bind], 200) || clip(values.quickTask, 200) || clip(actionParams.text, 200)
-        if (text === '') {
-          return { schema: widgetSchema(widgetId, data), toast: '请先输入事务内容' }
-        }
-        await ops.addTask(ctx, { text, date: todayKey() })
-        await ops.bumpQuickRev(ctx)
-        await pushAll(ctx, 'widget-quick-add')
-        return { schema: widgetSchema(widgetId, await ops.loadWeek(ctx, 0)), toast: '已添加事务' }
-      }
-      if (name === 'toggle-task') {
-        const data = await ops.loadWeek(ctx, 0)
-        const task = data.tasks.find((item) => item.id === clip(actionParams.id, 40))
-        if (task === undefined) {
-          return { schema: widgetSchema(widgetId, data), toast: '这条事务已不存在' }
-        }
-        await ops.updateTask(ctx, { id: task.id, done: !task.done })
-        await pushAll(ctx, 'widget-toggle-task')
-        return {
-          schema: widgetSchema(widgetId, await ops.loadWeek(ctx, 0)),
-          toast: task.done ? '已恢复为待办' : '已完成',
-        }
-      }
-      return { schema: widgetSchema(widgetId, await ops.loadWeek(ctx, 0)) }
-    } catch (error) {
-      if (error instanceof DataError) {
-        try {
-          return { schema: widgetSchema(widgetId, await ops.loadWeek(ctx, 0)), toast: error.message }
-        } catch {
-          return { toast: error.message }
-        }
-      }
-      ctx.log('error', '小组件处理失败', { widgetId, method: name, error: String(error) })
-      try {
-        return {
-          schema: widgetSchema(widgetId, await ops.loadWeek(ctx, 0)),
-          toast: '操作失败，请重试',
-        }
-      } catch {
-        return { toast: '操作失败，请重试' }
-      }
-    }
+    return handleWidgetPage(widgetId, method, params, ctx)
   },
 
   onConfigChanged(config, ctx) {
@@ -295,9 +241,7 @@ module.exports = {
     resetNow: resetNowForTests,
     tick: async (ctx) => tick(ctx),
     checkNotifications: async (ctx) => checkNotifications(ctx),
-    renderPanel: async (ctx) => renderPanel(ctx),
     purgeHistory: async (ctx) => ops.purgeTaskHistory(ctx),
-    widgetSchema,
     nowMs,
   },
 }

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>今日事务</title>
+<!-- 先拿周历的设计令牌与基础组件，再链小组件自己的紧凑布局 -->
+<link rel="stylesheet" href="calendar.css" />
+<link rel="stylesheet" href="widget.css" />
+</head>
+<body>
+<div id="tasks-app" class="wd-app wd-app-tasks" aria-busy="false">
+  <header class="wd-head">
+    <div class="wd-head-row">
+      <h1 class="wd-tasks-title">今日事务</h1>
+      <span id="today-label" class="wd-tasks-date"></span>
+    </div>
+    <div class="wd-stat-row" aria-label="今日事务进度">
+      <span class="wd-stat"><span id="pending-count" class="wd-stat-value">0</span><span class="wd-stat-label">待办</span></span>
+      <span class="wd-stat"><span id="done-count" class="wd-stat-value is-zero">0</span><span class="wd-stat-label">完成</span></span>
+      <span id="overdue-chip" class="wd-chip wd-chip-danger" hidden>逾期 <span id="overdue-count">0</span></span>
+      <span id="completion-label" class="wd-completion">0%</span>
+    </div>
+    <div id="progress" class="wd-progress" role="progressbar" aria-label="今日事务完成度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div id="progress-fill" class="wd-progress-fill"></div>
+    </div>
+  </header>
+  <div id="status" class="cal-status wd-status" role="status" aria-live="polite"></div>
+  <form id="quick-form" class="wd-quick" autocomplete="off">
+    <input id="quick-input" class="wd-quick-input" type="text" maxlength="200" placeholder="快速加一条今日事务…" aria-label="快速添加今日事务" />
+    <button id="quick-add" class="cal-btn cal-btn-primary" type="submit">添加</button>
+  </form>
+  <section class="wd-section" aria-labelledby="pending-title">
+    <h2 id="pending-title" class="cal-section-title">待办<span id="pending-badge" class="wd-count-badge"></span></h2>
+    <ul id="pending-list" class="wd-task-list"></ul>
+  </section>
+  <section id="done-section" class="wd-section" aria-labelledby="done-title" hidden>
+    <h2 id="done-title" class="cal-section-title">已完成<span id="done-badge" class="wd-count-badge"></span></h2>
+    <ul id="done-list" class="wd-task-list"></ul>
+  </section>
+  <section class="wd-section" aria-labelledby="schedule-title">
+    <h2 id="schedule-title" class="cal-section-title">本周安排</h2>
+    <ul id="schedule-list" class="wd-schedule-list"></ul>
+    <p id="schedule-more" class="wd-more" hidden></p>
+  </section>
+</div>
+<script src="widget-tasks.js" defer></script>
+</body>
+</html>

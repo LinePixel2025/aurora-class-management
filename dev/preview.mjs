@@ -1,380 +1,82 @@
 #!/usr/bin/env node
 /**
- * 视觉预览：用本机 Aurora 的宿主 CSS + 一个只读渲染器，把 2 个浮窗与 4 个面板视图
- * 渲染成静态页面，并（可选）调用 Chrome headless 截图。
+ * 页面型「班级事务台 + 桌面小组件」预览 / 截图（v2.1.0）。
  *
- * 产物在 dev/.cache/ 下，不随插件发布。
+ * 与旧的声明式预览不同：v2.1.0 的 4 个视图与 2 张小组件都是纯 HTML/CSS/JS 页面，
+ * 因此这里直接读取真实的页面文件，按宿主页面的加载方式拼成可用 file:// 打开的
+ * 静态页面，再交给本机 Chrome/Edge headless 截图：
+ *
+ *   1. 读取 ui/board.html|board.css|board.js、ui/widget-*.html|js、ui/widget.css；
+ *   2. 内联 calendar.css（设计系统）+ 页面自有 CSS / JS；
+ *   3. 注入只读 mock window.auroraPlugin：request 返回契约 §5 / §7 形状的演示数据，
+ *      onEvent 返回空取消函数（不推送事件）；
+ *   4. 用 html[data-theme="dark"|"light"] 强制主题（不依赖系统主题）；
+ *   5. 面板截图宽度固定 470px（与 README 旧图一致），高度先渲染量 scrollHeight 再截图；
+ *      小组件按宿主真实可视区域 320×(300-28) / 360×(460-28) 放进模拟的 28px 宿主标题栏里；
+ *   6. 产物全部写到 dev/.cache/（gitignore），只用于开发与 docs/images 配图。
  *
  * 运行：node dev/preview.mjs
+ * 找不到 Chrome/Edge 时只生成预览 HTML、打印提示并退出 0（与旧脚本一致）。
+ * 脚本零依赖，只用 node 内置模块。
  */
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 
-const require = createRequire(import.meta.url)
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const ROOT = path.resolve(__dirname, '..')
-const PLUGIN_DIR = path.join(ROOT, 'class-management')
+const UI_DIR = path.join(ROOT, 'class-management', 'ui')
 const CACHE = path.join(__dirname, '.cache')
 
-const main = require(path.join(PLUGIN_DIR, 'main.js'))
-const time = require(path.join(PLUGIN_DIR, 'lib', 'time.js'))
-const BASE_NOW = new Date(2026, 9, 21, 10, 0, 0, 0)
-
-const manifest = JSON.parse(fs.readFileSync(path.join(PLUGIN_DIR, 'manifest.json'), 'utf8'))
-
-// ───────────────────────── asar / CSS ─────────────────────────
-
-function asarFiles() {
-  const candidates = [
-    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Programs', 'Aurora', 'resources', 'app.asar') : '',
-  ].filter(Boolean)
-  for (const file of candidates) if (fs.existsSync(file)) return file
-  return null
+// 右栏面板截图宽度：与 README 旧图 / 宿主右栏右边界口径一致。
+const PANEL_WIDTH = 470
+// 宿主小组件窗口自绘标题栏高度（页面可用高度 = defaultSize.height - 28）。
+const WIDGET_TITLE_BAR = 28
+// 面板弹层截图用固定视口高度：弹层是 position: fixed，需要给一个像真机的可视高度。
+const MODAL_VIEWPORT_HEIGHT = 1500
+// 量高失败时的兜底高度（只用于异常兜底，正常情况都走 scrollHeight）。
+const FALLBACK_HEIGHTS = {
+  'panel-board-full-dark': 1650,
+  'panel-board-empty-dark': 900,
+  'panel-duty-dark': 900,
+  'panel-schedule-dark': 1100,
+  'panel-settings-dark': 1150,
+  'panel-board-light': 1650,
+  'panel-schedule-past-dark': 1000,
 }
 
-function readAsarHeader(asarPath) {
-  const fd = fs.openSync(asarPath, 'r')
-  try {
-    const head = Buffer.alloc(16)
-    fs.readSync(fd, head, 0, 16, 0)
-    const headerSize = head.readUInt32LE(12)
-    const headerBuffer = Buffer.alloc(headerSize)
-    fs.readSync(fd, headerBuffer, 0, headerSize, 16)
-    return { headerSize, index: JSON.parse(headerBuffer.toString('utf8')) }
-  } finally {
-    fs.closeSync(fd)
-  }
+const FILES = {
+  boardHtml: path.join(UI_DIR, 'board.html'),
+  boardCss: path.join(UI_DIR, 'board.css'),
+  boardJs: path.join(UI_DIR, 'board.js'),
+  overviewHtml: path.join(UI_DIR, 'widget-overview.html'),
+  overviewJs: path.join(UI_DIR, 'widget-overview.js'),
+  tasksHtml: path.join(UI_DIR, 'widget-tasks.html'),
+  tasksJs: path.join(UI_DIR, 'widget-tasks.js'),
+  widgetCss: path.join(UI_DIR, 'widget.css'),
+  calendarCss: path.join(UI_DIR, 'calendar.css'),
 }
 
-function readAsarEntry(asarPath, parts) {
-  const { headerSize, index } = readAsarHeader(asarPath)
-  let node = index
-  for (const part of parts) {
-    if (!node.files || node.files[part] === undefined) return null
-    node = node.files[part]
-  }
-  if (node.files !== undefined) return null
-  const size = Number(node.size)
-  const buffer = Buffer.alloc(size)
-  const fd = fs.openSync(asarPath, 'r')
-  try {
-    fs.readSync(fd, buffer, 0, size, 16 + Math.ceil(headerSize / 4) * 4 + Number(node.offset))
-  } finally {
-    fs.closeSync(fd)
-  }
-  return buffer
-}
+// manifest 里的两张桌面小组件（defaultSize 与宿主可视区域换算用）。
+const WIDGETS = [
+  { id: 'week-overview', title: '班级速览', file: 'widget-overview', width: 320, height: 300 },
+  { id: 'week-tasks', title: '今日事务', file: 'widget-tasks', width: 360, height: 460 },
+]
 
-function walkAsarFiles(node, prefix, out) {
-  if (!node || node.files === undefined) return
-  for (const [name, child] of Object.entries(node.files)) {
-    const parts = [...prefix, name]
-    if (child.files !== undefined) walkAsarFiles(child, parts, out)
-    else out.push(parts.join('/'))
-  }
-}
+// 小组件并排预览页的外框尺寸：卡片 + 28px 模拟宿主标题栏 + 页面留白。
+const SHOWCASE_GAP = 22
+const SHOWCASE_PADDING_X = 24
+const SHOWCASE_PADDING_TOP = 22
+const SHOWCASE_PADDING_BOTTOM = 26
+const SHOWCASE_WIDTH =
+  WIDGETS.reduce((total, widget) => total + widget.width, 0) + SHOWCASE_GAP * (WIDGETS.length - 1) + SHOWCASE_PADDING_X * 2
+const SHOWCASE_HEIGHT =
+  Math.max.apply(null, WIDGETS.map((widget) => widget.height)) + SHOWCASE_PADDING_TOP + SHOWCASE_PADDING_BOTTOM
 
-/** 列出 asar 内指定目录下的全部文件路径（用 `/` 分隔）。仅用于按文件名模式发现构建哈希。 */
-function listAsarFiles(asarPath, parts = ['out', 'renderer', 'assets']) {
-  const { index } = readAsarHeader(asarPath)
-  let node = index
-  for (const part of parts) {
-    if (!node.files || node.files[part] === undefined) return []
-    node = node.files[part]
-  }
-  const files = []
-  walkAsarFiles(node, parts, files)
-  return files
-}
-
-/** 在 asar 资源里按正则找到唯一目标；找不到时抛错并列出已见资源，绝不静默回退到旧哈希。 */
-function findAsset(asarPath, pattern, label) {
-  const files = listAsarFiles(asarPath)
-  const found = files.find((file) => pattern.test(file))
-  if (found === undefined) {
-    throw new Error(
-      `app.asar 中缺少预览所需的样式文件（${label}）：没有匹配 ${String(pattern)} 的资源。已见资源：\n${files.join('\n')}`,
-    )
-  }
-  return found.split('/')
-}
-
-function findBlock(source, openIndex) {
-  let depth = 0
-  for (let index = openIndex; index < source.length; index += 1) {
-    if (source[index] === '{') depth += 1
-    else if (source[index] === '}') {
-      depth -= 1
-      if (depth === 0) return { start: openIndex + 1, end: index }
-    }
-  }
-  return null
-}
-
-function extractLightRoot(themeCss) {
-  const mediaIndex = themeCss.indexOf('@media (prefers-color-scheme: light)')
-  if (mediaIndex < 0) return { mediaIndex: -1, bodyStart: -1, bodyEnd: -1, declarations: '' }
-  const open = themeCss.indexOf('{', mediaIndex)
-  const block = findBlock(themeCss, open)
-  if (block === null) return { mediaIndex: -1, bodyStart: -1, bodyEnd: -1, declarations: '' }
-  const body = themeCss.slice(block.start, block.end)
-  const rootIndex = body.indexOf(':root')
-  const rootOpen = rootIndex >= 0 ? body.indexOf('{', rootIndex) : -1
-  const rootBlock = rootOpen >= 0 ? findBlock(body, rootOpen) : null
-  return {
-    mediaIndex,
-    bodyStart: block.start,
-    bodyEnd: block.end,
-    declarations: rootBlock === null ? '' : body.slice(rootBlock.start, rootBlock.end),
-  }
-}
-
-function themeVariants(themeCss) {
-  const light = extractLightRoot(themeCss)
-  let darkCss = themeCss
-  if (light.bodyStart >= 0) {
-    darkCss = `${themeCss.slice(0, light.mediaIndex)}${themeCss.slice(light.bodyEnd + 1)}`
-  }
-  const lightCss = `${themeCss}\n:root {${light.declarations}}`
-  return { darkCss, lightCss }
-}
-
-// ───────────────────────── 数据 ─────────────────────────
-
-function createEnv() {
-  const store = new Map()
-  const ctx = {
-    plugin: { id: manifest.id, version: manifest.version, root: PLUGIN_DIR, dataDir: PLUGIN_DIR, isDev: true },
-    config: { className: '高二(15)班', teacher: '王老师', termStartDate: '', showCompleted: false },
-    storage: {
-      async get(key) {
-        return store.has(key) ? JSON.parse(JSON.stringify(store.get(key))) : undefined
-      },
-      async set(key, value) {
-        store.set(key, JSON.parse(JSON.stringify(value)))
-      },
-      async delete(key) {
-        store.delete(key)
-      },
-      async list() {
-        return [...store.keys()]
-      },
-    },
-    net: { async fetch() { throw new Error('preview: no net') } },
-    notify: async () => false,
-    log() {},
-    emitEvent: async () => {},
-    ui: {
-      async openPanel() {},
-      async toast() {},
-      async panelEvent() {},
-    },
-    signal: new AbortController().signal,
-  }
-  return { ctx, store }
-}
-
-async function invokeTool(env, name, input) {
-  return main.invokeTool(name, input, env.ctx)
-}
-
-async function invokePanel(env, method, params, values) {
-  return main.invokePanel('board', method, { params, values: values || {} }, env.ctx)
-}
-
-async function invokeWidget(env, widgetId, method, params, values) {
-  return main.invokeWidget(widgetId, method, { params, values: values || {} }, env.ctx)
-}
-
-async function buildWidgets(env) {
-  const widgets = {}
-  for (const widget of manifest.contributes.widgets) {
-    const result = await invokeWidget(env, widget.id, 'refresh', undefined)
-    widgets[widget.id] = result.schema
-  }
-  return widgets
-}
-
-async function buildPanels(env) {
-  const panels = {}
-  for (const view of ['board', 'duty', 'schedule', 'settings']) {
-    await invokePanel(env, 'view', { view })
-    panels[view] = (await invokePanel(env, 'refresh')).schema
-  }
-  return panels
-}
-
-async function buildDemo() {
-  main.__test.setNow(BASE_NOW.getTime())
-  const env = createEnv()
-  await main.activate(env.ctx)
-  await invokeTool(env, 'set_duty_groups', {
-    groups: [
-      { name: '第1组', members: ['张三', '李四', '王五'] },
-      { name: '第2组', members: ['赵六', '钱七', '孙八'] },
-      { name: '第3组', members: ['周九', '吴十', '郑一'] },
-      { name: '第4组', members: ['王二', '冯三', '陈四'] },
-    ],
-    order: ['第1组', '第2组', '第3组', '第4组'],
-  })
-  await invokeTool(env, 'apply_week_plan', {
-    plan: {
-      replaceTasks: true,
-      replaceSchedule: true,
-      tasks: [
-        { text: '收数学作业', date: '2026-10-21', dueDate: '2026-10-21', dueTime: '08:00', priority: 'high', category: '作业', assignee: '数学课代表' },
-        { text: '物理实验报告', date: '2026-10-21', dueDate: '2026-10-22', dueTime: '20:00', priority: 'normal', category: '作业' },
-        { text: '班会主题征集', date: '2026-10-21', dueDate: '2026-10-21', priority: 'low', category: '活动', assignee: '班长' },
-        { text: '校运会报名表', date: '2026-10-21', dueDate: '2026-10-23', dueTime: '17:00', priority: 'normal', category: '通知', assignee: '体育委员' },
-        { text: '英语单词默写', date: '2026-10-21', dueDate: '2026-10-22', dueTime: '07:40', priority: 'normal', category: '作业' },
-      ],
-      schedule: [
-        { weekday: 1, time: '08:00', title: '升旗仪式', place: '操场' },
-        { weekday: 3, time: '16:00', title: '班会', place: '教室' },
-        { weekday: 5, time: '15:30', title: '大扫除', place: '教室', note: '带清洁工具' },
-      ],
-      duty: {
-        note: '本周五放学后大扫除',
-      },
-      announcement: '本周五下午大扫除，请各组带好清洁工具；周五放学前交校运会报名表。',
-    },
-  })
-  const pending = await invokeTool(env, 'list_tasks', { status: 'pending' })
-  const idMatch = /id=([A-Za-z0-9_-]+)/.exec(pending.content)
-  if (idMatch !== null) await invokeTool(env, 'complete_task', { id: idMatch[1] })
-  const widgets = await buildWidgets(env)
-  const panels = await buildPanels(env)
-  const pendingAfter = await invokeTool(env, 'list_tasks', { status: 'pending' })
-  const editMatch = /id=([A-Za-z0-9_-]+)/.exec(pendingAfter.content)
-  if (editMatch !== null) {
-    await invokePanel(env, 'select-task', { id: editMatch[1] })
-    await invokePanel(env, 'view', { view: 'board' })
-    panels.boardEdit = (await invokePanel(env, 'refresh')).schema
-  }
-  await main.deactivate()
-  return { widgets, panels }
-}
-
-async function buildEmpty() {
-  main.__test.setNow(BASE_NOW.getTime())
-  const env = createEnv()
-  await main.activate(env.ctx)
-  const widgets = await buildWidgets(env)
-  const panels = await buildPanels(env)
-  await main.deactivate()
-  return { widgets, panels }
-}
-
-// ───────────────────────── HTML ─────────────────────────
-
-const RENDERER = fs.readFileSync(path.join(__dirname, 'preview-renderer.js'), 'utf8')
-
-function unscope(css) {
-  return css.replace(/\[data-v-[a-z0-9]+\]/g, '')
-}
-
-const PREVIEW_CSS = `
-html, body { margin: 0; padding: 0; }
-body {
-  padding: 20px;
-  background: var(--bg-base);
-  color: var(--text-primary);
-  font-family: var(--font-ui, "HarmonyOS Sans SC", "HarmonyOS Sans", "Microsoft YaHei UI", "Segoe UI", sans-serif);
-}
-.preview-head { display: flex; align-items: baseline; gap: 10px; margin: 0 0 16px; }
-.preview-head h1 { margin: 0; font-size: 17px; font-weight: 600; }
-.preview-head span { color: var(--text-muted); font-size: 12px; }
-.preview-grid { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start; }
-.tiny { font-size: var(--text-xs, 11px); }
-.panel-host {
-  width: 420px; height: 830px;
-  border: 1px solid var(--border-strong); border-radius: 12px; overflow: hidden;
-  background: var(--bg-base);
-}
-.panel-host .page-body { flex: 1; min-height: 0; overflow: auto; padding: 12px; box-sizing: border-box; }
-.panel-host .plugin-page { height: 100%; }
-`
-
-function page(title, css, body, script) {
-  return `<!doctype html>
-<html lang="zh-CN">
-<head>
-<meta charset="utf-8" />
-<title>${title}</title>
-<style>${css}</style>
-</head>
-<body>
-${body}
-<script>${RENDERER}</script>
-<script>${script}</script>
-</body>
-</html>`
-}
-
-function widgetCard(widget, index) {
-  const size = widget.defaultSize
-  return `<section class="widget-card" style="width:${size.width}px;height:${size.height}px">
-  <header class="widget-head">
-    <span class="widget-title">${widget.title}</span>
-    <button class="widget-hide" type="button">×</button>
-  </header>
-  <div class="widget-body" id="widget-${index}"></div>
-</section>`
-}
-
-function widgetsHtml(data, label, css) {
-  const cards = manifest.contributes.widgets
-    .map((widget, index) => widgetCard(widget, index))
-    .join('\n')
-  const script = `
-const widgets = ${JSON.stringify(data.widgets)};
-${manifest.contributes.widgets
-  .map(
-    (widget, index) =>
-      `window.PreviewRender.render(document.getElementById('widget-${index}'), widgets[${JSON.stringify(widget.id)}]);`,
-  )
-  .join('\n')}
-`
-  return page(
-    `浮窗预览 · ${label}`,
-    css,
-    `<div class="preview-head"><h1>桌面浮窗 · ${label}</h1><span>宿主同款小节件窗口尺寸 ${manifest.contributes.widgets
-      .map((widget) => `${widget.defaultSize.width}×${widget.defaultSize.height}`)
-      .join(' / ')}</span></div>
-<div class="preview-grid">
-${cards}
-</div>`,
-    script,
-  )
-}
-
-function panelHtml(view, schema, label, css, height = 830) {
-  const title = {
-    board: '今日',
-    duty: '值日',
-    schedule: '安排',
-    settings: '设置',
-  }[view]
-  const script = `window.PreviewRender.render(document.getElementById('panel-root'), ${JSON.stringify(schema)});`
-  return page(
-    `班级事务台 · ${title}`,
-    css,
-    `<div class="preview-head"><h1>班级事务台 · ${title}</h1><span>${label} · 右栏宽度约 400px</span></div>
-<section class="panel-host" style="height:${height}px">
-  <div class="plugin-page">
-    <div class="page-body"><div id="panel-root"></div></div>
-  </div>
-</section>`,
-    script,
-  )
-}
-
-// ───────────────────────── 截图 ─────────────────────────
+// ───────────────────────── Chrome / Edge ─────────────────────────
 
 function findChrome() {
   const candidates = [
@@ -385,116 +87,933 @@ function findChrome() {
   return candidates.find((candidate) => fs.existsSync(candidate)) || null
 }
 
+function fileUrl(filePath) {
+  return `file:///${path.resolve(filePath).replace(/\\/g, '/')}`
+}
+
+/** 同步等待文件出现且非空；Chrome 写截图是「临时文件 + 重命名」，需要避开瞬时窗口。 */
+function waitForFile(filePath, timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() <= deadline) {
+    const stat = fs.statSync(filePath, { throwIfNoEntry: false })
+    if (stat !== undefined && stat.size > 0) return stat
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50)
+  }
+  return null
+}
+
+/** 固定窗口尺寸截图；返回 PNG stat 或 null。 */
 function screenshot(chrome, htmlPath, pngPath, width, height) {
+  // 先删旧图：截图失败时不会让等待逻辑误判成功。
+  fs.rmSync(pngPath, { force: true })
   const args = [
     '--headless=new',
     '--disable-gpu',
     '--hide-scrollbars',
     '--disable-extensions',
     '--force-device-scale-factor=1',
+    '--virtual-time-budget=3000',
+    '--run-all-compositor-stages-before-draw',
     `--window-size=${width},${height}`,
     `--screenshot=${pngPath}`,
-    `file:///${htmlPath.replace(/\\/g, '/')}`,
+    fileUrl(htmlPath),
   ]
-  const result = spawnSync(chrome, args, { stdio: 'ignore', timeout: 60000 })
-  return result.status === 0 && fs.existsSync(pngPath)
+  const result = spawnSync(chrome, args, { stdio: 'ignore', timeout: 90000 })
+  if (result.status !== 0) return null
+  return waitForFile(pngPath)
+}
+
+/**
+ * 先渲染量页面内容高度：用 --dump-dom 取回测量脚本写进 <title> 的 CONTENT_HEIGHT。
+ * 页面宽度固定，视口高度不影响换行，所以量高窗口用保守的 500px 即可
+ * （body 有 min-height: 100vh，视口越低越不会把短页面量高）。
+ */
+function measureContentHeight(chrome, htmlPath, width, fallback) {
+  const result = spawnSync(
+    chrome,
+    [
+      '--headless=new',
+      '--disable-gpu',
+      '--hide-scrollbars',
+      '--disable-extensions',
+      '--force-device-scale-factor=1',
+      '--virtual-time-budget=3000',
+      `--window-size=${width},500`,
+      '--dump-dom',
+      fileUrl(htmlPath),
+    ],
+    { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024, timeout: 90000 },
+  )
+  const stdout = String(result.stdout === undefined || result.stdout === null ? '' : result.stdout)
+  const match = /<title[^>]*>CONTENT_HEIGHT:(\d+)<\/title>/i.exec(stdout)
+  if (match === null) return fallback
+  const height = Number(match[1])
+  if (!Number.isFinite(height) || height < 300) return fallback
+  // 上限防止异常页面（例如量到 1 万像素）生成超大图。
+  return Math.min(4000, Math.max(480, Math.ceil(height)))
+}
+
+// ───────────────────────── 演示数据（契约 §5 / §7） ─────────────────────────
+
+const WEEK = {
+  className: '高二(15)班',
+  teacher: '王老师',
+  termStartDate: '2026-09-01',
+  today: '2026-10-21',
+  todayLabel: '10/21 周三',
+  todayWeekday: 3,
+  weekOffset: 0,
+  weekNumber: 8,
+  weekLabel: '第 8 周 · 10/19–10/25',
+  weekRange: '10/19–10/25',
+  announcement: '本周五下午大扫除，请各组带好清洁工具；周五放学前交校运会报名表。',
+}
+
+const GROUPS = [
+  { id: 'g1', name: '第1组', members: ['张三', '李四', '王五'] },
+  { id: 'g2', name: '第2组', members: ['赵六', '钱七', '孙八'] },
+  { id: 'g3', name: '第3组', members: ['周九', '吴十', '郑一'] },
+  { id: 'g4', name: '第4组', members: ['王二', '冯三', '陈四'] },
+]
+
+/** 今日事务：覆盖未完成 / 已完成 / 逾期 / 高优先级 / 有截止 / 无截止。 */
+const DEMO_TASKS = [
+  {
+    id: 't1',
+    text: '收数学作业',
+    done: false,
+    date: WEEK.today,
+    priority: 'high',
+    category: '作业',
+    dueDate: WEEK.today,
+    dueTime: '08:00',
+    assignee: '数学课代表',
+    createdAt: '2026-10-19T08:00:00.000Z',
+    dueLabel: '今天 08:00',
+    overdue: true,
+  },
+  {
+    id: 't2',
+    text: '物理实验报告',
+    done: false,
+    date: WEEK.today,
+    priority: 'high',
+    category: '作业',
+    dueDate: WEEK.today,
+    dueTime: '20:00',
+    assignee: '学习委员',
+    createdAt: '2026-10-19T08:05:00.000Z',
+    dueLabel: '今天 20:00',
+    overdue: false,
+  },
+  {
+    id: 't3',
+    text: '校运会报名表',
+    done: false,
+    date: WEEK.today,
+    priority: 'normal',
+    category: '通知',
+    dueDate: '2026-10-23',
+    dueTime: '17:00',
+    assignee: '体育委员',
+    createdAt: '2026-10-19T08:10:00.000Z',
+    dueLabel: '周五 17:00',
+    overdue: false,
+  },
+  {
+    id: 't4',
+    text: '班会主题征集',
+    done: false,
+    date: WEEK.today,
+    priority: 'low',
+    category: '活动',
+    dueDate: '',
+    dueTime: '',
+    assignee: '班长',
+    createdAt: '2026-10-20T08:00:00.000Z',
+    dueLabel: '',
+    overdue: false,
+  },
+  {
+    id: 't5',
+    text: '英语单词默写',
+    done: true,
+    date: WEEK.today,
+    priority: 'normal',
+    category: '作业',
+    dueDate: WEEK.today,
+    dueTime: '07:40',
+    assignee: '英语课代表',
+    createdAt: '2026-10-19T08:15:00.000Z',
+    doneAt: '2026-10-21T07:55:00.000Z',
+    dueLabel: '今天 07:40',
+    overdue: false,
+  },
+  {
+    id: 't6',
+    text: '黑板报更新',
+    done: true,
+    date: WEEK.today,
+    priority: 'low',
+    category: '活动',
+    dueDate: '',
+    dueTime: '',
+    assignee: '宣传委员',
+    createdAt: '2026-10-18T08:00:00.000Z',
+    doneAt: '2026-10-20T18:00:00.000Z',
+    dueLabel: '',
+    overdue: false,
+  },
+]
+
+/** 本周 3 条安排：周一升旗、周三（今天）班会、周五大扫除。 */
+const DEMO_SCHEDULE = [
+  {
+    id: 's1',
+    weekday: 1,
+    time: '08:00',
+    title: '升旗仪式',
+    place: '操场',
+    note: '',
+    createdAt: '2026-10-16T08:00:00.000Z',
+  },
+  {
+    id: 's2',
+    weekday: 3,
+    time: '16:00',
+    title: '班会',
+    place: '教室',
+    note: '主题：秋日运动会动员',
+    createdAt: '2026-10-16T08:05:00.000Z',
+  },
+  {
+    id: 's3',
+    weekday: 5,
+    time: '15:30',
+    title: '大扫除',
+    place: '教室',
+    note: '带清洁工具',
+    createdAt: '2026-10-16T08:10:00.000Z',
+  },
+]
+
+const DEMO_DUTY = {
+  groupName: '第1组',
+  members: ['张三', '李四', '王五'],
+  note: '本周五放学后大扫除，请带好清洁工具。',
+}
+
+const DEMO_ROTATION = [
+  { week: '第 6 周', group: '第3组' },
+  { week: '第 7 周', group: '第4组' },
+  { week: '第 8 周（本周）', group: '第1组' },
+  { week: '第 9 周', group: '第2组' },
+]
+
+/** 过去周（canEdit: false）的安排：用于验证只读态。 */
+const PAST_SCHEDULE = [
+  {
+    id: 'ps1',
+    weekday: 1,
+    time: '08:00',
+    title: '升旗仪式',
+    place: '操场',
+    note: '',
+    createdAt: '2026-10-09T08:00:00.000Z',
+  },
+  {
+    id: 'ps2',
+    weekday: 4,
+    time: '16:00',
+    title: '阶段测验',
+    place: '教室',
+    note: '数学：必修一 3~4 章',
+    createdAt: '2026-10-09T08:05:00.000Z',
+  },
+]
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value))
+}
+
+function countsOf(tasks) {
+  let pending = 0
+  let done = 0
+  let high = 0
+  let overdue = 0
+  for (const task of tasks) {
+    if (task === null || typeof task !== 'object') continue
+    if (task.done === true) {
+      done += 1
+      continue
+    }
+    pending += 1
+    if (task.priority === 'high') high += 1
+    if (task.overdue === true) overdue += 1
+  }
+  return { total: tasks.length, pending, done, high, overdue }
+}
+
+function completionOf(counts) {
+  if (counts.total <= 0) return 0
+  return Math.min(100, Math.max(0, Math.round((counts.done / counts.total) * 100)))
+}
+
+/** 构造一份形状与 ops.loadBoard 输出一致的 BoardPageData。 */
+function createBoardData(config) {
+  const cfg = config !== null && typeof config === 'object' ? config : {}
+  const tasks = Array.isArray(cfg.tasks) ? cfg.tasks : clone(DEMO_TASKS)
+  const schedule = Array.isArray(cfg.schedule) ? cfg.schedule : clone(DEMO_SCHEDULE)
+  const groups = Array.isArray(cfg.groups) ? cfg.groups : clone(GROUPS)
+  const duty = Object.assign({}, DEMO_DUTY, cfg.duty === undefined || cfg.duty === null ? {} : cfg.duty)
+  const orderNames = Array.isArray(cfg.orderNames)
+    ? cfg.orderNames
+    : groups.map(function (group) {
+        return group.name
+      })
+  const counts = countsOf(tasks)
+  return {
+    view: typeof cfg.view === 'string' ? cfg.view : 'board',
+    weekOffset: Number.isInteger(cfg.weekOffset) ? cfg.weekOffset : WEEK.weekOffset,
+    isCurrentWeek: cfg.isCurrentWeek !== false,
+    isPastWeek: cfg.isPastWeek === true,
+    canEdit: cfg.canEdit !== false,
+    weekLabel: typeof cfg.weekLabel === 'string' ? cfg.weekLabel : WEEK.weekLabel,
+    weekNumber: Number.isInteger(cfg.weekNumber) ? cfg.weekNumber : WEEK.weekNumber,
+    weekRange: typeof cfg.weekRange === 'string' ? cfg.weekRange : WEEK.weekRange,
+    today: WEEK.today,
+    taskDate: WEEK.today,
+    taskDateLabel: WEEK.todayLabel,
+    settings: {
+      className: typeof cfg.className === 'string' ? cfg.className : WEEK.className,
+      teacher: typeof cfg.teacher === 'string' ? cfg.teacher : WEEK.teacher,
+      termStartDate: typeof cfg.termStartDate === 'string' ? cfg.termStartDate : WEEK.termStartDate,
+    },
+    counts,
+    completion: completionOf(counts),
+    tasks,
+    schedule,
+    announcement: typeof cfg.announcement === 'string' ? cfg.announcement : WEEK.announcement,
+    duty: {
+      groupName: typeof duty.groupName === 'string' ? duty.groupName : '',
+      members: Array.isArray(duty.members) ? duty.members : [],
+      note: typeof duty.note === 'string' ? duty.note : '',
+      hasOverrideGroup: duty.hasOverrideGroup === true,
+      orderNames,
+    },
+    dutyGroupId: typeof cfg.dutyGroupId === 'string' ? cfg.dutyGroupId : '',
+    groups,
+    groupsText:
+      typeof cfg.groupsText === 'string'
+        ? cfg.groupsText
+        : groups
+            .map(function (group) {
+              return group.name + ': ' + group.members.join(', ')
+            })
+            .join('\n'),
+    orderText: typeof cfg.orderText === 'string' ? cfg.orderText : orderNames.join('，'),
+    rotationPreview: Array.isArray(cfg.rotationPreview) ? cfg.rotationPreview : clone(DEMO_ROTATION),
+    stats:
+      cfg.stats !== undefined && cfg.stats !== null
+        ? cfg.stats
+        : { weeks: 6, tasks: 52, done: 39, schedule: 21, bytes: 61440 },
+    boardEmpty: cfg.boardEmpty === true,
+  }
+}
+
+/** 空今日：没有任何事务 / 安排 / 通知 / 值日组（首次打开的空态）。 */
+function createEmptyBoardData() {
+  return createBoardData({
+    tasks: [],
+    schedule: [],
+    groups: [],
+    duty: { groupName: '', members: [], note: '' },
+    announcement: '',
+    rotationPreview: [],
+    stats: { weeks: 0, tasks: 0, done: 0, schedule: 0, bytes: 0 },
+    boardEmpty: true,
+  })
+}
+
+/** 过去周只读：安排视图 / weekOffset = -1。 */
+function createPastWeekBoardData() {
+  return createBoardData({
+    view: 'schedule',
+    weekOffset: -1,
+    isCurrentWeek: false,
+    isPastWeek: true,
+    canEdit: false,
+    weekNumber: 7,
+    weekLabel: '第 7 周 · 10/12–10/18',
+    weekRange: '10/12–10/18',
+    tasks: [],
+    schedule: PAST_SCHEDULE,
+    duty: { groupName: '第4组', members: ['王二', '冯三', '陈四'], note: '上周值日：擦窗、倒垃圾。' },
+    rotationPreview: [
+      { week: '第 6 周', group: '第3组' },
+      { week: '第 7 周（该周）', group: '第4组' },
+      { week: '第 8 周（本周）', group: '第1组' },
+      { week: '第 9 周', group: '第2组' },
+    ],
+    stats: { weeks: 7, tasks: 52, done: 39, schedule: 21, bytes: 61440 },
+  })
+}
+
+/** 构造一份形状与 widget 处理器输出一致的 WidgetData（契约 §7.1）。 */
+function createWidgetData(widgetId, config) {
+  const cfg = config !== null && typeof config === 'object' ? config : {}
+  const tasks = Array.isArray(cfg.tasks) ? cfg.tasks : clone(DEMO_TASKS)
+  const schedule = Array.isArray(cfg.schedule) ? cfg.schedule : clone(DEMO_SCHEDULE)
+  const duty = Object.assign({}, DEMO_DUTY, cfg.duty === undefined || cfg.duty === null ? {} : cfg.duty)
+  const counts = countsOf(tasks)
+  return {
+    widgetId,
+    className: typeof cfg.className === 'string' ? cfg.className : WEEK.className,
+    teacher: typeof cfg.teacher === 'string' ? cfg.teacher : WEEK.teacher,
+    weekLabel: typeof cfg.weekLabel === 'string' ? cfg.weekLabel : WEEK.weekLabel,
+    weekRange: typeof cfg.weekRange === 'string' ? cfg.weekRange : WEEK.weekRange,
+    weekNumber: Number.isInteger(cfg.weekNumber) ? cfg.weekNumber : WEEK.weekNumber,
+    today: WEEK.today,
+    todayLabel: WEEK.todayLabel,
+    taskDateLabel: WEEK.todayLabel,
+    todayWeekday: WEEK.todayWeekday,
+    counts,
+    completion: completionOf(counts),
+    tasks,
+    schedule,
+    scheduleCount: schedule.length,
+    duty: {
+      groupName: typeof duty.groupName === 'string' ? duty.groupName : '',
+      members: Array.isArray(duty.members) ? duty.members : [],
+      note: typeof duty.note === 'string' ? duty.note : '',
+    },
+    announcement: typeof cfg.announcement === 'string' ? cfg.announcement : WEEK.announcement,
+    showCompleted: cfg.showCompleted === true,
+  }
+}
+
+// ───────────────────────── 页面组装 ─────────────────────────
+
+/** 只替换一次；页面结构变化时直接报错，避免静默产出错误预览。 */
+function replaceRequired(source, pattern, replacement, label) {
+  if (!pattern.test(source)) throw new Error(`页面结构已变化，找不到${label}`)
+  return source.replace(pattern, replacement)
+}
+
+/** 给 <html> 加 data-theme（已有则覆盖）；calendar.css 用它锁定预览主题。 */
+function withThemeAttribute(html, theme) {
+  return html.replace(/<html\b([^>]*)>/i, (_match, attrs) => {
+    const cleaned = String(attrs).replace(/\sdata-theme\s*=\s*("[^"]*"|'[^']*')/i, '')
+    return `<html${cleaned} data-theme="${theme}">`
+  })
+}
+
+/** 内联脚本里出现 </script> 会提前结束标签，转义后字符串语义不变。 */
+function inlineScript(code) {
+  return `<script>\n${String(code).replace(/<\/script>/gi, '<\\/script>')}\n</script>`
+}
+
+function scriptTagPattern(fileName) {
+  return new RegExp(`<script\\b[^>]*\\bsrc=(["'])${fileName.replace(/\./g, '\\.')}\\1[^>]*>\\s*</script>`, 'i')
+}
+
+function linkTagPattern(fileName) {
+  return new RegExp(`<link\\b[^>]*href=(["'])${fileName.replace(/\./g, '\\.')}\\1[^>]*>`, 'i')
+}
+
+/**
+ * mock window.auroraPlugin：只读演示。
+ * - load / save-view 返回当前演示数据（save-view 时把 view / weekOffset 回填，模拟后端持久化）；
+ * - 其他写动作同样返回演示数据 + message（截图只打开弹层，不真正提交）；
+ * - onEvent(listener) 返回取消函数，不推送 board.changed。
+ */
+function mockPluginScript(data) {
+  const json = JSON.stringify(data).replace(/</g, '\\u003c')
+  return `(() => {
+  'use strict'
+  const DEMO_DATA = ${json}
+  const clone = (value) => JSON.parse(JSON.stringify(value))
+
+  const plugin = {
+    request(method, params) {
+      const name = typeof method === 'string' ? method : ''
+      const data = clone(DEMO_DATA)
+      if (name === 'load' || name === 'save-view') {
+        if (params !== null && typeof params === 'object') {
+          if (typeof params.view === 'string') data.view = params.view
+          if (Number.isInteger(params.weekOffset)) data.weekOffset = params.weekOffset
+        }
+        return Promise.resolve({ data })
+      }
+      return Promise.resolve({ data, message: '演示模式（预览不写数据）' })
+    },
+    onEvent(listener) {
+      // 与宿主页面 preload 的真实签名一致：onEvent(listener(event, payload)) → 返回取消函数。
+      if (typeof listener !== 'function') return () => {}
+      return () => {}
+    },
+  }
+
+  Object.defineProperty(window, 'auroraPlugin', {
+    value: Object.freeze(plugin),
+    writable: false,
+    configurable: false,
+    enumerable: true,
+  })
+})()`
+}
+
+/**
+ * 量高脚本：等首屏渲染完成后把内容高度写进 <title>，供 --dump-dom 取回。
+ * 注意不能用 requestAnimationFrame：headless + --dump-dom 不会推进合成帧，
+ * rAF 回调在 dump 之前不会执行；这里只用 setInterval / setTimeout。
+ */
+const MEASURE_SCRIPT = `(() => {
+  'use strict'
+
+  function measure() {
+    const height = Math.ceil(Math.max(document.documentElement.scrollHeight, document.body.scrollHeight))
+    document.title = 'CONTENT_HEIGHT:' + height
+  }
+
+  function ready() {
+    const meta = document.getElementById('class-meta')
+    return meta !== null && meta.textContent.trim() !== ''
+  }
+
+  let ticks = 0
+  const timer = setInterval(function () {
+    ticks += 1
+    if (ready() || ticks >= 75) {
+      clearInterval(timer)
+      measure()
+      // 渲染后的过渡 / 字体度量可能再微调一次高度，稍后再量一遍。
+      setTimeout(measure, 80)
+    }
+  }, 40)
+})()`
+
+/** 打开页面里的某个弹层 / 点击某个按钮：轮询等元素出现后点一次。 */
+function clickFirstScript(selector) {
+  return `(() => {
+  'use strict'
+  const TARGET = ${JSON.stringify(selector)}
+  const startedAt = Date.now()
+  const timer = setInterval(function () {
+    const node = document.querySelector(TARGET)
+    if (node !== null) {
+      clearInterval(timer)
+      node.click()
+      return
+    }
+    if (Date.now() - startedAt > 3000) clearInterval(timer)
+  }, 40)
+})()`
+}
+
+function buildBoardPage(options) {
+  const html = options.html
+  const theme = options.theme
+  const data = options.data
+  const driver = options.driver
+  const calendarCss = options.calendarCss
+  const boardCss = options.boardCss
+  const boardJs = options.boardJs
+
+  const styleCalendar = `<style>\n${calendarCss}\n</style>`
+  // Chrome headless 在 Windows 上窗口最小宽度是 500px（截图再裁到 470），固定定位的弹层
+  // 会按 500px 视口居中、在 470px 截图里偏右 15px；预览里把弹层锁到截图宽度。
+  const styleBoard = `<style>\n${boardCss}\n\n/* 预览：锁死右栏面板宽度，避免 headless 最小窗口宽度影响布局 */\nhtml, body { width: ${PANEL_WIDTH}px; }\n.cal-modal { right: auto; width: ${PANEL_WIDTH}px; }\n</style>`
+
+  let page = html
+  page = replaceRequired(page, linkTagPattern('calendar.css'), () => styleCalendar, ' <link href="calendar.css">')
+  page = replaceRequired(page, linkTagPattern('board.css'), () => styleBoard, ' <link href="board.css">')
+  page = replaceRequired(page, scriptTagPattern('board.js'), () => '', ' <script src="board.js">')
+
+  const blocks = [inlineScript(mockPluginScript(data)), inlineScript(boardJs), inlineScript(MEASURE_SCRIPT)]
+  if (driver !== undefined) blocks.push(inlineScript(driver))
+  if (!/<\/body>/i.test(page)) throw new Error('board.html 缺少 </body>')
+  page = page.replace(/<\/body>/i, `${blocks.join('\n')}\n</body>`)
+  return withThemeAttribute(page, theme)
+}
+
+function buildWidgetPage(options) {
+  const html = options.html
+  const js = options.js
+  const data = options.data
+  const theme = options.theme
+  const width = options.width
+  const height = options.height
+  const calendarCss = options.calendarCss
+  const widgetCss = options.widgetCss
+  const jsFile = options.jsFile
+
+  const styleCalendar = `<style>\n${calendarCss}\n</style>`
+  // 页面本体在宿主里是透明底（不透明卡片由宿主窗口绘制）；iframe 预览同样保留透明，
+  // 由外层模拟卡片的底色透出。宽高锁死为宿主可视区域，保证媒体查询与真机一致。
+  const styleWidget = `<style>\n${widgetCss}\n</style>\n<style>\nhtml, body { width: ${width}px; height: ${height}px; }\n</style>`
+
+  let page = html
+  page = replaceRequired(page, linkTagPattern('calendar.css'), () => styleCalendar, ' <link href="calendar.css">')
+  page = replaceRequired(page, linkTagPattern('widget.css'), () => styleWidget, ' <link href="widget.css">')
+  page = replaceRequired(page, scriptTagPattern(jsFile), () => '', ` <script src="${jsFile}">`)
+
+  const blocks = [inlineScript(mockPluginScript(data)), inlineScript(js)]
+  if (!/<\/body>/i.test(page)) throw new Error(`${jsFile} 所在页面缺少 </body>`)
+  page = page.replace(/<\/body>/i, `${blocks.join('\n')}\n</body>`)
+  return withThemeAttribute(page, theme)
+}
+
+/** 并排两张桌面小组件：模拟宿主 28px 标题栏 + 真实可视区域的页面 iframe。 */
+function buildWidgetsShowcase(options) {
+  const theme = options.theme
+  const innerFiles = options.innerFiles
+  const calendarCss = options.calendarCss
+
+  const showcaseCss = `
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html, body { margin: 0; padding: 0; }
+
+body {
+  width: ${SHOWCASE_WIDTH}px;
+  height: ${SHOWCASE_HEIGHT}px;
+  padding: ${SHOWCASE_PADDING_TOP}px ${SHOWCASE_PADDING_X}px ${SHOWCASE_PADDING_BOTTOM}px;
+  overflow: hidden;
+  background-color: var(--cal-bg);
+  background-image:
+    radial-gradient(120% 80% at 88% -8%, var(--cal-glow-a), transparent 58%),
+    radial-gradient(110% 80% at -12% 104%, var(--cal-glow-b), transparent 60%);
+  color: var(--cal-text);
+  font: 12px/1.5 var(--cal-font-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.wd-showcase {
+  display: flex;
+  align-items: flex-start;
+  gap: ${SHOWCASE_GAP}px;
+}
+
+/* 模拟宿主小组件窗口：不透明卡片 + 28px 标题栏（标题 + ×），页面内容在标题栏下方 */
+.wd-host-card {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--cal-line-strong);
+  border-radius: var(--cal-radius);
+  background: var(--cal-surface-raised);
+  box-shadow: 0 16px 36px -18px rgba(0, 0, 0, 0.55);
+}
+
+.wd-host-head {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  height: ${WIDGET_TITLE_BAR}px;
+  padding: 0 8px 0 11px;
+  border-bottom: 1px solid var(--cal-line);
+  background: var(--cal-surface);
+}
+
+.wd-host-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--cal-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wd-host-close {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  color: var(--cal-faint);
+  font-family: var(--cal-font-body);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.wd-host-body {
+  flex: 0 0 auto;
+  background: var(--cal-surface-raised);
+}
+
+.wd-host-body iframe {
+  display: block;
+  border: 0;
+  background: transparent;
+}
+`
+
+  const cards = WIDGETS.map(function (widget) {
+    const bodyHeight = widget.height - WIDGET_TITLE_BAR
+    const innerFile = innerFiles[widget.id]
+    if (typeof innerFile !== 'string' || innerFile === '') {
+      throw new Error(`缺少小组件 ${widget.id} 的内部预览页`)
+    }
+    return `<section class="wd-host-card" style="width:${widget.width}px">
+  <header class="wd-host-head">
+    <span class="wd-host-title">${widget.title}</span>
+    <span class="wd-host-close" aria-hidden="true">×</span>
+  </header>
+  <div class="wd-host-body">
+    <iframe src="${innerFile}" title="${widget.title}（${widget.width}×${bodyHeight}）" style="width:${widget.width}px;height:${bodyHeight}px"></iframe>
+  </div>
+</section>`
+  }).join('\n')
+
+  return `<!doctype html>
+<html lang="zh-CN" data-theme="${theme}">
+<head>
+<meta charset="utf-8" />
+<title>桌面小组件预览</title>
+<style>
+${calendarCss}
+</style>
+<style>
+${showcaseCss}
+</style>
+</head>
+<body>
+<main class="wd-showcase">
+${cards}
+</main>
+</body>
+</html>`
+}
+
+// ───────────────────────── 预览清单 ─────────────────────────
+
+function panelPreviews() {
+  return [
+    {
+      name: 'panel-board-full-dark',
+      theme: 'dark',
+      label: '今日视图 · 完整示例数据',
+      data: createBoardData(),
+    },
+    {
+      name: 'panel-board-empty-dark',
+      theme: 'dark',
+      label: '今日视图 · 空态',
+      data: createEmptyBoardData(),
+    },
+    {
+      name: 'panel-board-edit-dark',
+      theme: 'dark',
+      label: '今日视图 · 事务编辑弹层',
+      data: createBoardData(),
+      driver: clickFirstScript('#pending-tasks .board-task-btn'),
+      height: MODAL_VIEWPORT_HEIGHT,
+    },
+    {
+      name: 'panel-duty-dark',
+      theme: 'dark',
+      label: '值日视图',
+      data: createBoardData({ view: 'duty' }),
+    },
+    {
+      name: 'panel-schedule-dark',
+      theme: 'dark',
+      label: '安排视图',
+      data: createBoardData({ view: 'schedule' }),
+    },
+    {
+      name: 'panel-settings-dark',
+      theme: 'dark',
+      label: '设置视图',
+      data: createBoardData({ view: 'settings' }),
+    },
+    {
+      name: 'panel-board-light',
+      theme: 'light',
+      label: '今日视图 · 浅色',
+      data: createBoardData(),
+    },
+    {
+      name: 'board-confirm-dark',
+      theme: 'dark',
+      label: '今日视图 · 删除确认弹层',
+      data: createBoardData(),
+      driver: clickFirstScript('#pending-tasks .board-task-btn.is-danger'),
+      height: MODAL_VIEWPORT_HEIGHT,
+    },
+    {
+      name: 'panel-schedule-past-dark',
+      theme: 'dark',
+      label: '安排视图 · 过去周只读',
+      data: createPastWeekBoardData(),
+    },
+  ]
+}
+
+function widgetPreviews() {
+  return [
+    { name: 'widgets-dark', theme: 'dark', variant: 'dark', label: '两张小组件并排 · 深色' },
+    { name: 'widgets-light', theme: 'light', variant: 'light', label: '两张小组件并排 · 浅色' },
+    { name: 'widgets-empty-dark', theme: 'dark', variant: 'empty-dark', label: '两张小组件并排 · 空态' },
+  ]
+}
+
+function widgetDataFor(variant, widgetId) {
+  if (variant === 'empty-dark') {
+    return createWidgetData(widgetId, {
+      tasks: [],
+      schedule: [],
+      duty: { groupName: '', members: [], note: '' },
+      announcement: '',
+      showCompleted: false,
+    })
+  }
+  // 预览开启「今日事务」小组件的已完成区（配置项 showCompleted），
+  // 360×432 的可视区域里待办 + 已完成 + 本周安排刚好完整落位，不会裁掉半行。
+  return createWidgetData(widgetId, { showCompleted: widgetId === 'week-tasks' })
 }
 
 // ───────────────────────── 入口 ─────────────────────────
 
+function ensureHtmlFiles() {
+  const missing = Object.values(FILES).filter((file) => !fs.existsSync(file))
+  if (missing.length > 0) {
+    process.stderr.write(`缺少页面文件，无法生成预览：\n${missing.map((file) => `  · ${file}`).join('\n')}\n`)
+    return false
+  }
+  return true
+}
+
+function writeFile(filePath, content) {
+  fs.writeFileSync(filePath, content, 'utf8')
+  process.stdout.write(`  · ${filePath}\n`)
+}
+
 async function mainRun() {
   fs.mkdirSync(CACHE, { recursive: true })
-  const asar = asarFiles()
-  if (asar === null) {
-    process.stderr.write('找不到 Aurora 的 app.asar，无法获得宿主同款样式。\n')
+  if (!ensureHtmlFiles()) {
     process.exitCode = 1
     return
   }
-  const theme = readAsarEntry(asar, findAsset(asar, /\/theme-[^/]+\.css$/, 'theme-*.css'))
-  const rendererCss = readAsarEntry(asar, findAsset(asar, /\/PluginSchemaRenderer-[^/]+\.css$/, 'PluginSchemaRenderer-*.css'))
-  const widgetCss = readAsarEntry(asar, findAsset(asar, /\/widget-[^/]+\.css$/, 'widget-*.css'))
-  const pageCss = readAsarEntry(asar, findAsset(asar, /\/PluginPageFrame-[^/]+\.css$/, 'PluginPageFrame-*.css'))
-  if (theme === null || rendererCss === null || widgetCss === null || pageCss === null) {
-    process.stderr.write('app.asar 中缺少预览所需的样式文件，Aurora 版本可能已变化。\n')
-    process.exitCode = 1
-    return
-  }
-  const variants = themeVariants(theme.toString('utf8'))
-  const scopedCss = `${unscope(rendererCss.toString('utf8'))}\n${unscope(widgetCss.toString('utf8'))}\n${unscope(pageCss.toString('utf8'))}`
-  const baseCss = `${variants.darkCss}\n${scopedCss}`
-  const lightCss = `${variants.lightCss}\n${scopedCss}`
 
-  process.stdout.write('生成演示数据…\n')
-  const demo = await buildDemo()
-  const empty = await buildEmpty()
-
-  const files = []
-  function write(name, html) {
-    const target = path.join(CACHE, name)
-    fs.writeFileSync(target, html, 'utf8')
-    files.push(target)
-    process.stdout.write(`  · ${target}\n`)
+  const source = {
+    calendarCss: fs.readFileSync(FILES.calendarCss, 'utf8'),
+    boardHtml: fs.readFileSync(FILES.boardHtml, 'utf8'),
+    boardCss: fs.readFileSync(FILES.boardCss, 'utf8'),
+    boardJs: fs.readFileSync(FILES.boardJs, 'utf8'),
+    overviewHtml: fs.readFileSync(FILES.overviewHtml, 'utf8'),
+    overviewJs: fs.readFileSync(FILES.overviewJs, 'utf8'),
+    tasksHtml: fs.readFileSync(FILES.tasksHtml, 'utf8'),
+    tasksJs: fs.readFileSync(FILES.tasksJs, 'utf8'),
+    widgetCss: fs.readFileSync(FILES.widgetCss, 'utf8'),
   }
 
-  const darkAll = `${baseCss}\n${PREVIEW_CSS}`
-  const lightAll = `${lightCss}\n${PREVIEW_CSS}`
+  process.stdout.write('生成预览页（dev/.cache）：\n')
 
-  write('widgets-dark.html', widgetsHtml(demo, '示例数据', darkAll))
-  write('widgets-empty-dark.html', widgetsHtml(empty, '空数据', darkAll))
-  write('widgets-light.html', widgetsHtml(demo, '示例数据 · 浅色', lightAll))
-  const panelHeights = { board: 1450, duty: 1450, schedule: 1900, settings: 1200 }
-  for (const view of ['board', 'duty', 'schedule', 'settings']) {
-    write(
-      `panel-${view}-dark.html`,
-      panelHtml(view, demo.panels[view], '示例数据', darkAll, panelHeights[view]),
-    )
-  }
-  write('panel-board-light.html', panelHtml('board', demo.panels.board, '示例数据 · 浅色', lightAll, 1450))
-  write('panel-board-empty-dark.html', panelHtml('board', empty.panels.board, '空数据 · 首次打开', darkAll, 830))
-  write('panel-board-full-dark.html', panelHtml('board', demo.panels.board, '示例数据 · 完整今日', darkAll, 1450))
-  if (demo.panels.boardEdit !== undefined) {
-    write(
-      'panel-board-edit-dark.html',
-      panelHtml('board', demo.panels.boardEdit, '示例数据 · 编辑卡片', darkAll, 1750),
-    )
+  // ── 面板：9 张图 ──
+  const panels = panelPreviews()
+  for (const preview of panels) {
+    const html = buildBoardPage({
+      html: source.boardHtml,
+      calendarCss: source.calendarCss,
+      boardCss: source.boardCss,
+      boardJs: source.boardJs,
+      data: preview.data,
+      theme: preview.theme,
+      driver: preview.driver,
+    })
+    writeFile(path.join(CACHE, `${preview.name}.html`), html)
   }
 
-  // 把主题里的字体文件一并放到预览目录，避免 @font-face 相对路径失效
-  const fontNames = [...new Set([...theme.toString('utf8').matchAll(/url\('\.\/([^']+)'\)/g)].map((match) => match[1]))]
-  for (const fontName of fontNames) {
-    const font = readAsarEntry(asar, ['out', 'renderer', 'assets', fontName])
-    if (font !== null) fs.writeFileSync(path.join(CACHE, fontName), font)
+  // ── 小组件：先出 6 张 inner 页，再出 3 张并排展示页 ──
+  const showcasePages = []
+  for (const preview of widgetPreviews()) {
+    const innerFiles = {}
+    for (const widget of WIDGETS) {
+      const innerName = `${widget.file}-${preview.variant}.inner.html`
+      const innerHtml = buildWidgetPage({
+        html: widget.id === 'week-overview' ? source.overviewHtml : source.tasksHtml,
+        js: widget.id === 'week-overview' ? source.overviewJs : source.tasksJs,
+        jsFile: `${widget.file}.js`,
+        data: widgetDataFor(preview.variant, widget.id),
+        theme: preview.theme,
+        width: widget.width,
+        height: widget.height - WIDGET_TITLE_BAR,
+        calendarCss: source.calendarCss,
+        widgetCss: source.widgetCss,
+      })
+      writeFile(path.join(CACHE, innerName), innerHtml)
+      innerFiles[widget.id] = innerName
+    }
+    const showcaseHtml = buildWidgetsShowcase({
+      theme: preview.theme,
+      innerFiles,
+      calendarCss: source.calendarCss,
+    })
+    writeFile(path.join(CACHE, `${preview.name}.html`), showcaseHtml)
+    showcasePages.push({ preview, htmlName: `${preview.name}.html`, pngName: `${preview.name}.png` })
   }
 
   const chrome = findChrome()
   if (chrome === null) {
-    process.stdout.write('没有找到 Chrome/Edge，跳过截图。\n')
+    process.stdout.write('\n没有找到 Chrome/Edge，跳过截图；预览 HTML 已生成在 dev/.cache/。\n')
     return
   }
-  const jobs = [
-    ['widgets-dark.html', 'widgets-dark.png', 800, 620],
-    ['widgets-empty-dark.html', 'widgets-empty-dark.png', 800, 620],
-    ['widgets-light.html', 'widgets-light.png', 800, 620],
-    ['panel-board-dark.html', 'panel-board-dark.png', 470, 1550],
-    ['panel-duty-dark.html', 'panel-duty-dark.png', 470, 1550],
-    ['panel-schedule-dark.html', 'panel-schedule-dark.png', 470, 2000],
-    ['panel-settings-dark.html', 'panel-settings-dark.png', 470, 1300],
-    ['panel-board-light.html', 'panel-board-light.png', 470, 1550],
-    ['panel-board-empty-dark.html', 'panel-board-empty-dark.png', 470, 900],
-    ['panel-board-full-dark.html', 'panel-board-full-dark.png', 470, 1550],
-    ['panel-board-edit-dark.html', 'panel-board-edit-dark.png', 470, 1850],
-  ]
+
   process.stdout.write('\n截图：\n')
-  for (const [htmlName, pngName, width, height] of jobs) {
-    const htmlPath = path.join(CACHE, htmlName)
-    const pngPath = path.join(CACHE, pngName)
-    const done = screenshot(chrome, htmlPath, pngPath, width, height)
-    process.stdout.write(`  ${done ? '✓' : '✗'} ${pngPath}\n`)
-    if (!done) process.exitCode = 1
+  const results = []
+  let failures = 0
+
+  for (const preview of panels) {
+    const htmlPath = path.join(CACHE, `${preview.name}.html`)
+    const pngPath = path.join(CACHE, `${preview.name}.png`)
+    const height =
+      preview.height === undefined
+        ? measureContentHeight(chrome, htmlPath, PANEL_WIDTH, FALLBACK_HEIGHTS[preview.name] || 1200)
+        : preview.height
+    const stat = screenshot(chrome, htmlPath, pngPath, PANEL_WIDTH, height)
+    const done = stat !== null
+    process.stdout.write(
+      `  ${done ? '✓' : '✗'} ${pngPath}（${PANEL_WIDTH}×${height}${done ? `，${Math.round(stat.size / 1024)} KB` : ''}）\n`,
+    )
+    if (!done) failures += 1
+    else results.push({ file: pngPath, size: stat.size, width: PANEL_WIDTH, height })
   }
+
+  for (const showcase of showcasePages) {
+    const htmlPath = path.join(CACHE, showcase.htmlName)
+    const pngPath = path.join(CACHE, showcase.pngName)
+    const stat = screenshot(chrome, htmlPath, pngPath, SHOWCASE_WIDTH, SHOWCASE_HEIGHT)
+    const done = stat !== null
+    process.stdout.write(
+      `  ${done ? '✓' : '✗'} ${pngPath}（${SHOWCASE_WIDTH}×${SHOWCASE_HEIGHT}${done ? `，${Math.round(stat.size / 1024)} KB` : ''}）\n`,
+    )
+    if (!done) failures += 1
+    else results.push({ file: pngPath, size: stat.size, width: SHOWCASE_WIDTH, height: SHOWCASE_HEIGHT })
+  }
+
+  if (failures > 0) {
+    process.stderr.write(`\n有 ${failures} 张截图失败（详见上面的 ✗）。\n`)
+    process.exitCode = 1
+    return
+  }
+
+  process.stdout.write(`\n生成完成：${panels.length + showcasePages.length} 张截图。\n`)
+  process.stdout.write('把需要的 PNG 拷到 docs/images/ 即可更新 README 配图。\n')
 }
 
 mainRun().catch((error) => {
-  process.stderr.write(`预览生成失败：${String(error && error.stack ? error.stack : error)}\n`)
+  process.stderr.write(`页面预览生成失败：${String(error && error.stack ? error.stack : error)}\n`)
   process.exitCode = 1
 })

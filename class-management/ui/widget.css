@@ -1,0 +1,663 @@
+/*
+ * 两张页面型桌面小组件（班级速览 / 今日事务）的共用样式。
+ *
+ * 设计口径与「班级周历」一致：
+ * - 页面先 link calendar.css 拿到 --cal-* 设计令牌、字体栈、.cal-* 基础组件，
+ *   本文件只补小组件的紧凑布局，并复用 .cal-section-title / .cal-task* /
+ *   .cal-schedule-* / .cal-empty / .cal-status / .cal-btn*；
+ * - html / body 透明，不画自己的底板：v2.1.0 宿主小组件卡片是不透明底色
+ *   （windowMaterial: none），页面只负责标题栏以下的内容；
+ * - 字号 11–13px、间距紧凑；唯一滚动容器是 .wd-app，内容超高时在窗口内滚动；
+ * - 不渲染插件名 / 关闭 / 刷新等宿主 chrome。
+ */
+
+:root {
+  --wd-gap: 4px;
+  --wd-pad-x: 11px;
+  --wd-pad-y: 8px;
+}
+
+/* ════════════════════════════════════════════
+   1. 透明底板与滚动容器
+   ════════════════════════════════════════════ */
+html,
+body {
+  background: transparent;
+  background-image: none;
+}
+
+html {
+  height: 100%;
+  min-height: 100%;
+}
+
+body {
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--cal-text);
+  font: 12px/1.5 var(--cal-font-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.wd-app {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wd-gap);
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  padding: var(--wd-pad-y) var(--wd-pad-x);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--cal-line-strong) transparent;
+}
+
+.wd-app > * {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.wd-app::-webkit-scrollbar {
+  width: 6px;
+  height: 0;
+}
+
+.wd-app::-webkit-scrollbar-thumb {
+  border-radius: 6px;
+  background: var(--cal-line-strong);
+}
+
+.wd-app::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ════════════════════════════════════════════
+   2. 页头：班级名 / 今日日期 / 周次 / 统计 / 进度
+   ════════════════════════════════════════════ */
+.wd-head {
+  min-width: 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--cal-line);
+}
+
+/* 班级速览：宋体标题感 + 一道粉笔痕（与 .cal-title 同一装饰语言） */
+.wd-class-name {
+  position: relative;
+  margin: 0;
+  padding-bottom: 4px;
+  color: var(--cal-text);
+  font-family: var(--cal-font-display);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0.08em;
+  overflow-wrap: anywhere;
+}
+
+.wd-class-name::after {
+  content: "";
+  position: absolute;
+  left: 1px;
+  bottom: 0;
+  width: 34px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--cal-accent), transparent);
+}
+
+.wd-head-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  margin-top: 3px;
+  color: var(--cal-muted);
+  font-size: 10.5px;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 值为空的元信息直接收起，避免出现孤立的“·”分隔符 */
+.wd-head-meta > *:empty {
+  display: none;
+}
+
+.wd-teacher::before {
+  content: "·";
+  margin-right: 5px;
+  color: var(--cal-faint);
+}
+
+/* 今日事务：宋体标题 + 日期 */
+.wd-head-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  min-width: 0;
+}
+
+.wd-tasks-title {
+  margin: 0;
+  color: var(--cal-text);
+  font-family: var(--cal-font-display);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0.1em;
+}
+
+.wd-tasks-date {
+  color: var(--cal-accent);
+  font-family: var(--cal-font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.wd-tasks-date:empty {
+  display: none;
+}
+
+/* 统计：大号等宽数字 + 小字标签，窄屏自动换行 */
+.wd-stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 7px;
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.wd-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.wd-stat-value {
+  color: var(--cal-text);
+  font-family: var(--cal-font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.wd-stat-value.is-zero {
+  color: var(--cal-muted);
+}
+
+.wd-stat-label {
+  color: var(--cal-muted);
+  font-size: 10.5px;
+  line-height: 1.4;
+  letter-spacing: 0.04em;
+}
+
+.wd-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 1.7;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.wd-chip-danger {
+  background: var(--cal-danger-soft);
+  color: var(--cal-danger);
+}
+
+.wd-completion {
+  margin-left: auto;
+  color: var(--cal-accent);
+  font-family: var(--cal-font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+}
+
+.wd-progress {
+  position: relative;
+  height: 3px;
+  margin-top: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--cal-surface-sunken);
+  box-shadow: inset 0 0 0 1px var(--cal-line);
+}
+
+.wd-progress-fill {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--cal-accent);
+  transition: width 240ms ease;
+}
+
+.wd-progress-fill.is-complete {
+  background: var(--cal-ok);
+}
+
+/* ════════════════════════════════════════════
+   3. 栏目标题与内容分组
+   ════════════════════════════════════════════ */
+.wd-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* 与周历 .cal-section-title 同款，但小组件更小一号 */
+.wd-section .cal-section-title {
+  gap: 6px;
+  font-size: 9.5px;
+  line-height: 1.2;
+  letter-spacing: 0.14em;
+}
+
+.wd-count-badge {
+  flex: 0 0 auto;
+  color: var(--cal-faint);
+  font-family: var(--cal-font-mono);
+  font-size: 9.5px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
+.wd-count-badge:empty {
+  display: none;
+}
+
+.wd-more {
+  margin: 0;
+  color: var(--cal-faint);
+  font-size: 9.5px;
+  font-weight: 400;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+}
+
+.wd-more:empty {
+  display: none;
+}
+
+/* 班级速览把「还有 n 项」并进栏目标题行，省一行高度 */
+.wd-more-inline {
+  margin-left: 1px;
+  white-space: nowrap;
+}
+
+.wd-empty,
+.wd-app .cal-empty {
+  margin: 0;
+  padding: 5px 8px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* ════════════════════════════════════════════
+   4. 本周值日（班级速览）
+   ════════════════════════════════════════════ */
+.wd-duty-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  min-width: 0;
+}
+
+.wd-duty-group {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 0 7px 0 5px;
+  border: 1px solid var(--cal-duty-soft);
+  border-radius: 999px;
+  background: var(--cal-duty-soft);
+  color: var(--cal-text-soft);
+  font-size: 10.5px;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.wd-duty-group::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--cal-duty);
+  box-shadow: 0 0 0 2px var(--cal-duty-soft);
+}
+
+.wd-duty-group.is-empty {
+  border-color: var(--cal-line);
+  background: transparent;
+  color: var(--cal-faint);
+}
+
+.wd-duty-group.is-empty::before {
+  background: var(--cal-line-strong);
+  box-shadow: none;
+}
+
+.wd-duty-members {
+  flex: 1 1 80px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--cal-muted);
+  font-size: 10.5px;
+  line-height: 1.45;
+  letter-spacing: 0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wd-duty-members:empty {
+  display: none;
+}
+
+.wd-duty-note {
+  margin: 0;
+  overflow: hidden;
+  color: var(--cal-faint);
+  font-size: 10px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+}
+
+.wd-duty-note:empty {
+  display: none;
+}
+
+/* ════════════════════════════════════════════
+   5. 本周安排（复用 calendar.css 的安排条）
+   ════════════════════════════════════════════ */
+.wd-schedule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.wd-schedule-list > li {
+  min-width: 0;
+}
+
+.wd-app .cal-schedule-row {
+  padding: 1px 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  cursor: default;
+}
+
+.wd-app .cal-schedule-time {
+  font-size: 10px;
+}
+
+.wd-app .cal-schedule-place {
+  font-size: 9.5px;
+}
+
+.wd-sched-row {
+  border-left-width: 2px;
+}
+
+.wd-sched-row.is-today {
+  border-left-color: var(--cal-accent);
+  background: linear-gradient(90deg, var(--cal-accent-soft), var(--cal-accent-soft) 62%, transparent);
+  color: var(--cal-text);
+}
+
+.wd-sched-row.is-today .cal-schedule-time {
+  color: var(--cal-accent);
+}
+
+.wd-sched-row.is-past {
+  opacity: 0.58;
+}
+
+.wd-today-tag {
+  flex: 0 0 auto;
+  align-self: center;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--cal-accent);
+  color: var(--cal-accent-ink);
+  font-family: var(--cal-font-body);
+  font-size: 9px;
+  line-height: 1.6;
+  letter-spacing: 0.04em;
+}
+
+/* ════════════════════════════════════════════
+   6. 班级通知摘要（最多 2 行）
+   ════════════════════════════════════════════ */
+.wd-announcement {
+  margin: 0;
+  max-height: 2.8em;
+  overflow: hidden;
+  color: var(--cal-text-soft);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.wd-announcement.is-empty {
+  max-height: 1.6em;
+  color: var(--cal-faint);
+  font-size: 11px;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+}
+
+/* ════════════════════════════════════════════
+   7. 今日事务：快速添加与状态条
+   ════════════════════════════════════════════ */
+.wd-quick {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  min-width: 0;
+}
+
+.wd-quick-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 26px;
+  padding: 3px 8px;
+  border: 1px solid var(--cal-line);
+  border-radius: 7px;
+  background: var(--cal-surface-sunken);
+  color: var(--cal-text);
+  font: 400 11.5px/1.4 var(--cal-font-body);
+  transition: border-color 120ms ease;
+}
+
+.wd-quick-input::placeholder {
+  color: var(--cal-faint);
+}
+
+.wd-quick-input:hover:not(:disabled) {
+  border-color: var(--cal-line-strong);
+}
+
+.wd-quick-input:focus-visible {
+  border-color: var(--cal-accent);
+}
+
+.wd-quick .cal-btn {
+  flex: 0 0 auto;
+  min-height: 26px;
+  padding: 3px 11px;
+  font-size: 11.5px;
+}
+
+.wd-app .cal-status {
+  margin: 0;
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.wd-app .cal-status:not(:empty) {
+  padding: 4px 8px;
+}
+
+/* ════════════════════════════════════════════
+   8. 今日事务：事务行
+   ════════════════════════════════════════════ */
+.wd-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+/* 覆盖 .cal-task 的换行布局：主内容一列，删除按钮固定在右侧 */
+.wd-task {
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0 -4px;
+  padding: 1px 4px;
+}
+
+.wd-task .cal-task-toggle {
+  width: 17px;
+  height: 17px;
+  margin-top: 1px;
+  font-size: 9px;
+}
+
+.wd-task-main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+/* 文本行用行内流式排版：高优先级标记跟着正文，长文本自然换行 */
+.wd-task-line {
+  display: block;
+  min-width: 0;
+  line-height: 1.4;
+}
+
+.wd-task .cal-task-text {
+  display: inline;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.wd-high {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: var(--cal-danger-soft);
+  color: var(--cal-danger);
+  font-size: 9px;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  vertical-align: 1px;
+}
+
+.wd-task.is-done .wd-high {
+  background: var(--cal-line);
+  color: var(--cal-faint);
+}
+
+.wd-task .cal-task-meta {
+  font-size: 9.5px;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.wd-task .cal-task-meta.is-overdue {
+  color: var(--cal-danger);
+}
+
+/* 删除：页面内二次确认（第一次点进入“确认删除？”状态） */
+.wd-task-del {
+  flex: 0 0 auto;
+  margin-left: 0;
+  min-height: 20px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--cal-muted);
+  font-size: 10px;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.wd-task-del:hover:not(:disabled) {
+  border-color: var(--cal-danger);
+  background: var(--cal-danger-soft);
+  color: var(--cal-danger);
+}
+
+.wd-task-del.is-arming {
+  border-color: var(--cal-danger);
+  background: var(--cal-danger-soft);
+  color: var(--cal-danger);
+  font-weight: 600;
+}
+
+/* ════════════════════════════════════════════
+   9. 窄窗口（320px）适配
+   ════════════════════════════════════════════ */
+@media (max-width: 340px) {
+  :root {
+    --wd-gap: 3px;
+    --wd-pad-x: 9px;
+    --wd-pad-y: 7px;
+  }
+
+  .wd-stat-row {
+    gap: 2px 6px;
+  }
+
+  .wd-task-del {
+    padding: 0 5px;
+  }
+}

@@ -163,7 +163,14 @@
 
   function isDayEditable(data, day) {
     if (!validData(data) || day === null || day === undefined) return false
+    // 周级可编辑：本周内过去天也能编辑/删除/完成，只有过去周整体只读。
     return data.canEdit !== false && day.canEdit !== false
+  }
+
+  /** 这一天能不能新增事务（过去天不能新增，但已有事务仍可编辑/删除）。 */
+  function canAddTaskToDay(data, day) {
+    if (!isDayEditable(data, day)) return false
+    return day.canAddTask !== false
   }
 
   function findTaskInData(data, id) {
@@ -543,10 +550,11 @@
 
   function buildDayCard(data, day) {
     const canEditDay = isDayEditable(data, day)
+    const canAddTask = canAddTaskToDay(data, day)
     const section = document.createElement('section')
     section.className = 'cal-day'
     if (day.isToday === true) section.classList.add('is-today')
-    if (day.isToday !== true && day.canEdit === false) section.classList.add('is-past')
+    if (day.isToday !== true && day.isPast === true) section.classList.add('is-past')
     if (day.date !== undefined && day.date !== null) {
       section.setAttribute('data-date', textOf(day.date))
     }
@@ -569,7 +577,7 @@
     const badge = document.createElement('span')
     badge.className = 'cal-day-badge'
     if (day.isToday === true) badge.textContent = '今天'
-    else if (day.canEdit === false) badge.textContent = '过去'
+    else if (day.isPast === true) badge.textContent = '过去'
     header.appendChild(badge)
 
     const scheduleAdd = document.createElement('button')
@@ -608,7 +616,7 @@
     }
     section.appendChild(scheduleList)
 
-    section.appendChild(buildAddForm(day, canEditDay))
+    section.appendChild(buildAddForm(day, canAddTask))
     return section
   }
 
@@ -710,7 +718,7 @@
     return row
   }
 
-  function buildAddForm(day, canEditDay) {
+  function buildAddForm(day, canAddTask) {
     const form = document.createElement('form')
     form.className = 'cal-add-form'
 
@@ -718,14 +726,14 @@
     input.type = 'text'
     input.className = 'cal-add-input'
     input.placeholder = day.isToday === true ? '添加今天的事务…' : '添加 ' + textOf(day.label) + ' 的事务…'
-    input.disabled = !canEditDay
+    input.disabled = !canAddTask
     form.appendChild(input)
 
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'cal-add-btn'
     button.textContent = '添加'
-    button.disabled = !canEditDay
+    button.disabled = !canAddTask
     form.appendChild(button)
 
     let busy = false
@@ -733,7 +741,7 @@
       if (busy) return
       const data = state.data
       const freshDay = findDayByDate(data, day.date)
-      if (!isDayEditable(data, freshDay)) return
+      if (!canAddTaskToDay(data, freshDay)) return
       const content = input.value.trim()
       if (content === '') {
         showStatus('请先输入事务内容', 'error')
@@ -749,7 +757,7 @@
         busy = false
         if (input.isConnected) {
           const currentDay = findDayByDate(state.data, day.date)
-          const editable = isDayEditable(state.data, currentDay)
+          const editable = canAddTaskToDay(state.data, currentDay)
           input.disabled = !editable
           button.disabled = !editable
           if (outcome.error === '' && !editable) input.value = ''
@@ -968,7 +976,7 @@
   function handleDayDragOver(event, date) {
     if (state.draggingTaskId === '') return
     const day = findDayByDate(state.data, date)
-    if (!isDayEditable(state.data, day)) return
+    if (!canAddTaskToDay(state.data, day)) return
     event.preventDefault()
     if (event.dataTransfer) {
       try {
@@ -981,7 +989,7 @@
 
   function handleDayDrop(event, date) {
     const day = findDayByDate(state.data, date)
-    if (!isDayEditable(state.data, day)) return
+    if (!canAddTaskToDay(state.data, day)) return
     let taskId = state.draggingTaskId
     if (taskId === '' && event.dataTransfer) {
       try {

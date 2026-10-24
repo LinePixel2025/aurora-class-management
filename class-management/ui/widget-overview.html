@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>班级速览</title>
+<!-- 先拿周历的设计令牌与基础组件，再链小组件自己的紧凑布局 -->
+<link rel="stylesheet" href="calendar.css" />
+<link rel="stylesheet" href="widget.css" />
+</head>
+<body>
+<div id="overview-app" class="wd-app wd-app-overview" aria-busy="false">
+  <header class="wd-head">
+    <h1 id="class-name" class="wd-class-name">班级速览</h1>
+    <div class="wd-head-meta">
+      <span id="week-label" class="wd-week"></span>
+      <span id="teacher" class="wd-teacher"></span>
+    </div>
+    <div class="wd-stat-row" aria-label="今日事务进度">
+      <span class="wd-stat"><span id="pending-count" class="wd-stat-value">0</span><span class="wd-stat-label">待办</span></span>
+      <span class="wd-stat"><span id="done-count" class="wd-stat-value is-zero">0</span><span class="wd-stat-label">完成</span></span>
+      <span id="overdue-chip" class="wd-chip wd-chip-danger" hidden>逾期 <span id="overdue-count">0</span></span>
+      <span id="completion-label" class="wd-completion">0%</span>
+    </div>
+    <div id="progress" class="wd-progress" role="progressbar" aria-label="今日事务完成度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div id="progress-fill" class="wd-progress-fill"></div>
+    </div>
+  </header>
+  <section class="wd-section" aria-labelledby="duty-title">
+    <h2 id="duty-title" class="cal-section-title">本周值日</h2>
+    <div class="wd-duty-row">
+      <span id="duty-group" class="wd-duty-group is-empty">待安排</span>
+      <span id="duty-members" class="wd-duty-members"></span>
+    </div>
+    <p id="duty-note" class="wd-duty-note"></p>
+  </section>
+  <section class="wd-section" aria-labelledby="schedule-title">
+    <h2 id="schedule-title" class="cal-section-title">本周安排<span id="schedule-more" class="wd-more wd-more-inline"></span></h2>
+    <ul id="schedule-list" class="wd-schedule-list"></ul>
+  </section>
+  <section class="wd-section" aria-labelledby="announcement-title">
+    <h2 id="announcement-title" class="cal-section-title">班级通知</h2>
+    <p id="announcement" class="wd-announcement is-empty">本周暂无通知</p>
+  </section>
+  <div id="status" class="cal-status wd-status" role="status" aria-live="polite"></div>
+</div>
+<script src="widget-overview.js" defer></script>
+</body>
+</html>

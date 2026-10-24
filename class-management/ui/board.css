@@ -1,0 +1,780 @@
+/*
+ * 班级事务台（Aurora 右栏页面型面板）布局样式。
+ *
+ * 设计口径：
+ * - 设计令牌、按钮、弹层、表单、状态条全部复用 calendar.css（先 link calendar.css 再 link 本文件）；
+ * - 本文件只写事务台自有布局，类名统一 board- 前缀，不覆盖 calendar.css 的组件口径；
+ * - 结构是「页头 + 胶囊 tab + 单列卡片流」，右栏 320–420px 可完整使用，≥640px 居中留白；
+ * - 所有颜色只引用 --cal-* 变量，因此深色 / 浅色跟随系统由 calendar.css 统一处理。
+ */
+
+/* ════════════════════════════════════════════
+   0. 页面容器
+   ════════════════════════════════════════════ */
+#board-app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 16px 14px 28px;
+}
+
+.board-head {
+  padding-bottom: 2px;
+}
+
+/* 值日 / 安排视图的周信息行，紧跟班级信息行 */
+.board-week-meta {
+  margin-top: 3px;
+  color: var(--cal-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* ════════════════════════════════════════════
+   1. 胶囊视图 tab
+   ════════════════════════════════════════════ */
+.board-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--cal-line);
+}
+
+.board-tab {
+  padding: 5px 14px;
+  border: 1px solid var(--cal-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--cal-muted);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease, background-color 120ms ease;
+}
+
+.board-tab:hover:not(:disabled) {
+  border-color: var(--cal-accent);
+  background: var(--cal-accent-soft);
+  color: var(--cal-accent);
+}
+
+.board-tab[aria-selected="true"] {
+  border-color: var(--cal-accent);
+  background: var(--cal-accent-soft);
+  color: var(--cal-accent);
+  font-weight: 600;
+}
+
+/* 过去周只读提示 */
+.board-readonly {
+  margin: 11px 0 0;
+  padding: 7px 10px;
+  border: 1px solid var(--cal-danger);
+  border-radius: 8px;
+  background: var(--cal-danger-soft);
+  color: var(--cal-danger);
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+/* ════════════════════════════════════════════
+   2. 视图与卡片
+   ════════════════════════════════════════════ */
+.board-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 14px;
+}
+
+.board-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 13px;
+  border: 1px solid var(--cal-line);
+  border-radius: var(--cal-radius);
+  background: linear-gradient(180deg, var(--cal-surface-raised), var(--cal-surface));
+}
+
+.board-card-title {
+  margin: 0;
+  min-width: 0;
+}
+
+/* 标题后的小计数（未完成 3 / 已完成 2 / 安排 4） */
+.board-section-count {
+  flex: 0 0 auto;
+  color: var(--cal-faint);
+  font-family: var(--cal-font-mono);
+  font-size: 10.5px;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.board-hint {
+  margin: 0;
+  color: var(--cal-faint);
+  font-size: 11.5px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.board-hint:empty {
+  display: none;
+}
+
+.board-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.board-actions-end {
+  justify-content: flex-end;
+}
+
+/* ════════════════════════════════════════════
+   3. 今日概览卡
+   ════════════════════════════════════════════ */
+.board-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--cal-today-line);
+  border-radius: var(--cal-radius);
+  background:
+    linear-gradient(180deg, var(--cal-today-wash), transparent 68%),
+    linear-gradient(180deg, var(--cal-surface-raised), var(--cal-surface));
+  box-shadow: 0 8px 24px -20px var(--cal-accent);
+}
+
+.board-hero-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 4px 10px;
+}
+
+.board-hero-date {
+  min-width: 0;
+}
+
+.board-date {
+  color: var(--cal-accent);
+  font-family: var(--cal-font-display);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.board-hero-sub {
+  margin-top: 2px;
+  color: var(--cal-muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+.board-progress-label {
+  flex: 0 0 auto;
+  color: var(--cal-muted);
+  font-size: 11px;
+  line-height: 1.6;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.board-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 7px;
+}
+
+.board-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border: 1px solid var(--cal-line);
+  border-radius: 999px;
+  color: var(--cal-muted);
+  font-size: 11px;
+  line-height: 1.6;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.board-count.is-danger {
+  border-color: var(--cal-danger);
+  background: var(--cal-danger-soft);
+  color: var(--cal-danger);
+}
+
+.board-count.is-accent {
+  border-color: var(--cal-today-line);
+  background: var(--cal-accent-soft);
+  color: var(--cal-accent);
+}
+
+.board-count.is-ok {
+  border-color: var(--cal-ok);
+  background: var(--cal-ok-soft);
+  color: var(--cal-ok);
+}
+
+.board-progress {
+  position: relative;
+  height: 7px;
+  overflow: hidden;
+  border: 1px solid var(--cal-line);
+  border-radius: 999px;
+  background: var(--cal-surface-sunken);
+}
+
+.board-progress-fill {
+  width: 0;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--cal-duty), var(--cal-accent));
+  transition: width 260ms ease;
+}
+
+.board-duty-pill {
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+/* ════════════════════════════════════════════
+   4. 表单（添加事务 / 添加安排 / 弹层内表单）
+   ════════════════════════════════════════════ */
+.board-form {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+/* 固定两列：右栏 320–470px 下日期 / 时间、优先级 / 分类各占一行，负责人整行；
+   ≥640px 的宽面板主视图换成 4 列（弹层卡片仍保持 2 列）。 */
+.board-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.board-form-grid > * {
+  min-width: 0;
+}
+
+.board-field-wide {
+  grid-column: 1 / -1;
+}
+
+/* calendar.css 只覆盖 .cal-field 的 input / select，这里补齐 textarea */
+.cal-field textarea {
+  width: 100%;
+  min-height: 76px;
+  max-height: 220px;
+  padding: 8px 9px;
+  border: 1px solid var(--cal-line);
+  border-radius: 8px;
+  background: var(--cal-surface-sunken);
+  color: var(--cal-text);
+  font: 400 12.5px/1.6 var(--cal-font-body);
+  letter-spacing: normal;
+  resize: vertical;
+  transition: border-color 120ms ease;
+}
+
+.cal-field textarea::placeholder {
+  color: var(--cal-faint);
+}
+
+.cal-field textarea:hover:not(:disabled) {
+  border-color: var(--cal-line-strong);
+}
+
+.cal-field textarea:focus-visible {
+  border-color: var(--cal-accent);
+}
+
+.board-form-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.board-form-foot .cal-error {
+  flex: 1 1 140px;
+}
+
+.board-form-foot .cal-btn {
+  margin-left: auto;
+}
+
+/* ════════════════════════════════════════════
+   5. 事务行（复用 .cal-task 的圆点 / 文本 / 元信息口径）
+   ════════════════════════════════════════════ */
+.board-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.board-task-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.board-task-btn {
+  padding: 2px 7px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--cal-muted);
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease, background-color 120ms ease;
+}
+
+.board-task-btn:hover:not(:disabled) {
+  border-color: var(--cal-line);
+  background: var(--cal-surface-raised);
+  color: var(--cal-accent);
+}
+
+.board-task-btn.is-danger:hover:not(:disabled) {
+  border-color: var(--cal-danger);
+  background: var(--cal-danger-soft);
+  color: var(--cal-danger);
+}
+
+/* 已完成折叠区 */
+.board-done {
+  display: block;
+}
+
+.board-done-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 2px 0;
+  list-style: none;
+  cursor: pointer;
+}
+
+.board-done-summary::-webkit-details-marker {
+  display: none;
+}
+
+/* 折叠箭头用 CSS 画（不依赖 ⏵/▸ 等字形），默认右指、展开后下指 */
+.board-done-summary::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 0;
+  height: 0;
+  margin-right: 2px;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid var(--cal-muted);
+  transition: transform 120ms ease, border-left-color 120ms ease;
+}
+
+.board-done[open] .board-done-summary::before {
+  transform: rotate(90deg);
+}
+
+.board-done-summary:hover::before {
+  border-left-color: var(--cal-accent);
+}
+
+.board-done-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.board-done[open] .board-task-list-done {
+  margin-top: 8px;
+}
+
+/* ════════════════════════════════════════════
+   6. 本周安排预览
+   ════════════════════════════════════════════ */
+.board-preview-list {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.board-preview-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  padding: 5px 0;
+  border-bottom: 1px dashed var(--cal-line);
+}
+
+.board-preview-row:last-child {
+  border-bottom: 0;
+}
+
+.board-preview-when {
+  flex: 0 0 auto;
+  color: var(--cal-duty);
+  font-family: var(--cal-font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.board-preview-title {
+  flex: 1 1 96px;
+  min-width: 0;
+  color: var(--cal-text-soft);
+  font-size: 12.5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.board-preview-row.is-today .board-preview-title {
+  color: var(--cal-accent);
+}
+
+.board-preview-place {
+  flex: 0 1 auto;
+  max-width: 42%;
+  overflow: hidden;
+  color: var(--cal-muted);
+  font-size: 10.5px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-preview-badge {
+  flex: 0 0 auto;
+  padding: 0 6px;
+  border: 1px solid var(--cal-today-line);
+  border-radius: 999px;
+  color: var(--cal-accent);
+  font-size: 10px;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+/* ════════════════════════════════════════════
+   7. 值日视图
+   ════════════════════════════════════════════ */
+.board-kv {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.board-kv-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.board-kv-label {
+  flex: 0 0 auto;
+  min-width: 64px;
+  color: var(--cal-muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.board-kv-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--cal-text-soft);
+  overflow-wrap: anywhere;
+}
+
+.board-members {
+  margin: 0;
+  color: var(--cal-text-soft);
+  font-size: 12.5px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.board-members:empty {
+  display: none;
+}
+
+.board-rot {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.board-rot-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px dashed var(--cal-line);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.board-rot-row:last-child {
+  border-bottom: 0;
+}
+
+.board-rot-week {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--cal-muted);
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+
+.board-rot-group {
+  flex: 0 0 auto;
+  color: var(--cal-duty);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* ════════════════════════════════════════════
+   8. 安排视图
+   ════════════════════════════════════════════ */
+.board-schedule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.board-schedule-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-left: 2px solid var(--cal-duty);
+  border-radius: 4px 8px 8px 4px;
+  background: var(--cal-duty-soft);
+}
+
+.board-schedule-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+}
+
+.board-schedule-when {
+  flex: 0 0 auto;
+  color: var(--cal-duty);
+  font-family: var(--cal-font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.board-schedule-name {
+  flex: 1 1 96px;
+  min-width: 0;
+  color: var(--cal-text);
+  font-size: 12.5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.board-schedule-place {
+  flex: 0 1 auto;
+  max-width: 42%;
+  overflow: hidden;
+  color: var(--cal-muted);
+  font-size: 10.5px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-schedule-note {
+  color: var(--cal-muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.board-schedule-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 2px;
+  margin-top: 1px;
+}
+
+/* ════════════════════════════════════════════
+   9. 设置视图
+   ════════════════════════════════════════════ */
+.board-clear {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 2px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--cal-line);
+}
+
+.board-clear .cal-btn {
+  align-self: flex-start;
+}
+
+.board-tips {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--cal-muted);
+  font-size: 12px;
+  line-height: 1.75;
+}
+
+.board-tips li {
+  overflow-wrap: anywhere;
+}
+
+/* ════════════════════════════════════════════
+   10. 弹层补充
+   ════════════════════════════════════════════ */
+.board-modal {
+  max-width: 400px;
+}
+
+.board-confirm-text {
+  margin: 0;
+  color: var(--cal-text-soft);
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.board-confirm-text:empty {
+  display: none;
+}
+
+/* ════════════════════════════════════════════
+   11. 响应式
+   ════════════════════════════════════════════ */
+@media (max-width: 360px) {
+  #board-app {
+    padding: 12px 10px 24px;
+  }
+
+  .board-tabs {
+    gap: 5px;
+  }
+
+  .board-tab {
+    flex: 1 1 auto;
+    padding: 5px 8px;
+    text-align: center;
+  }
+
+  .board-week-nav {
+    width: 100%;
+  }
+
+  .board-week-nav .cal-nav-btn {
+    flex: 1 1 auto;
+    text-align: center;
+  }
+
+  .board-card {
+    padding: 10px 11px;
+  }
+
+  .board-hero {
+    padding: 11px;
+  }
+
+  .board-kv-label {
+    min-width: 56px;
+  }
+
+  .board-modal {
+    max-width: none;
+  }
+
+  .board-task-actions {
+    flex: 0 0 100%;
+    justify-content: flex-end;
+  }
+}
+
+@media (min-width: 640px) {
+  #board-app {
+    padding: 20px 22px 34px;
+  }
+
+  .board-tabs {
+    gap: 8px;
+  }
+
+  .board-tab {
+    padding: 6px 18px;
+    font-size: 12.5px;
+  }
+
+  .board-card {
+    padding: 14px 15px;
+  }
+
+  .board-hero {
+    padding: 15px;
+  }
+
+  .board-kv-label {
+    min-width: 72px;
+  }
+
+  /* 宽面板主视图：日期 / 时间 / 优先级 / 分类排成一行；弹层卡片保持 2 列。 */
+  .board-view .board-form-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* 弹层打开时锁住背景滚动（与 calendar.css 同口径，重复声明无害） */
+body:has(.cal-modal:not([hidden])) {
+  overflow: hidden;
+}

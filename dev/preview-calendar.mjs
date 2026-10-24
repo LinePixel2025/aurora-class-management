@@ -2,8 +2,8 @@
 /**
  * 页面型「班级周历」预览 / 截图。
  *
- * 与 dev/preview.mjs（声明式浮窗 / 面板）不同：页面型面板是纯 HTML/CSS/JS，
- * 需要把真实的 ui/calendar.html、ui/calendar.css、ui/calendar.js 合成一份
+ * v2.1.0 起事务台与两张小组件也改为页面型（由 dev/preview.mjs 预览）；本脚本只负责
+ * 周历页：把真实的 ui/calendar.html、ui/calendar.css、ui/calendar.js 合成一份
  * 可直接用 file:// 打开的预览页，并注入只读 mock window.auroraPlugin，
  * 再交给本机 Chrome/Edge headless 截图。
  *
@@ -109,6 +109,8 @@ const DEMO_DATA = {
       label: '10/19 周一',
       isToday: false,
       canEdit: true,
+      isPast: true,
+      canAddTask: false,
       tasks: [
         {
           id: 't1',
@@ -157,6 +159,8 @@ const DEMO_DATA = {
       label: '10/20 周二',
       isToday: false,
       canEdit: true,
+      isPast: true,
+      canAddTask: false,
       tasks: [
         {
           id: 't3',
@@ -195,6 +199,8 @@ const DEMO_DATA = {
       label: '10/21 周三',
       isToday: true,
       canEdit: true,
+      isPast: false,
+      canAddTask: true,
       tasks: [
         {
           id: 't5',
@@ -257,6 +263,8 @@ const DEMO_DATA = {
       label: '10/22 周四',
       isToday: false,
       canEdit: true,
+      isPast: false,
+      canAddTask: true,
       tasks: [
         {
           id: 't8',
@@ -281,6 +289,8 @@ const DEMO_DATA = {
       label: '10/23 周五',
       isToday: false,
       canEdit: true,
+      isPast: false,
+      canAddTask: true,
       tasks: [
         {
           id: 't9',
@@ -315,6 +325,8 @@ const DEMO_DATA = {
       label: '10/24 周六',
       isToday: false,
       canEdit: true,
+      isPast: false,
+      canAddTask: true,
       tasks: [],
       schedule: [],
     },
@@ -324,6 +336,8 @@ const DEMO_DATA = {
       label: '10/25 周日',
       isToday: false,
       canEdit: true,
+      isPast: false,
+      canAddTask: true,
       tasks: [],
       schedule: [],
     },

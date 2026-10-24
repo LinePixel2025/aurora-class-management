@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>班级事务台</title>
+<!-- 复用班级周历的设计系统（令牌 / 按钮 / 弹层 / 表单 / 状态条），再叠加事务台自有布局 -->
+<link rel="stylesheet" href="calendar.css" />
+<link rel="stylesheet" href="board.css" />
+</head>
+<body>
+<div id="board-app">
+  <header class="cal-head board-head">
+    <div class="cal-title-row">
+      <h1 class="cal-title">班级事务台</h1>
+      <!-- 周切换只在值日 / 安排视图出现，由 board.js 切换 hidden -->
+      <div id="week-nav" class="cal-week-nav" hidden>
+        <button id="prev-week" class="cal-nav-btn" type="button">‹ 上一周</button>
+        <button id="this-week" class="cal-nav-btn" type="button">本周</button>
+        <button id="next-week" class="cal-nav-btn" type="button">下一周 ›</button>
+      </div>
+    </div>
+    <div id="class-meta" class="cal-week-meta"></div>
+    <div id="week-meta" class="board-week-meta" hidden></div>
+    <div id="tabs" class="board-tabs" role="tablist" aria-label="班级事务台视图">
+      <button id="tab-board" class="board-tab" type="button" role="tab" aria-selected="true" aria-controls="view-board" tabindex="0" data-view="board">今日</button>
+      <button id="tab-duty" class="board-tab" type="button" role="tab" aria-selected="false" aria-controls="view-duty" tabindex="-1" data-view="duty">值日</button>
+      <button id="tab-schedule" class="board-tab" type="button" role="tab" aria-selected="false" aria-controls="view-schedule" tabindex="-1" data-view="schedule">安排</button>
+      <button id="tab-settings" class="board-tab" type="button" role="tab" aria-selected="false" aria-controls="view-settings" tabindex="-1" data-view="settings">设置</button>
+    </div>
+    <p id="readonly-note" class="board-readonly" hidden>过去周只读：历史数据不能修改，切回本周或未来周即可编辑。</p>
+  </header>
+
+  <main id="views">
+    <!-- ══════════════ 今日 ══════════════ -->
+    <section id="view-board" class="board-view" role="tabpanel" aria-labelledby="tab-board" tabindex="-1">
+      <section class="board-hero" aria-label="今日概览">
+        <div class="board-hero-head">
+          <div class="board-hero-date">
+            <div id="today-label" class="board-date"></div>
+            <div id="today-sub" class="board-hero-sub"></div>
+          </div>
+          <span id="progress-label" class="board-progress-label"></span>
+        </div>
+        <div id="today-counts" class="board-counts"></div>
+        <div id="progress" class="board-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="今日事务完成进度">
+          <div id="progress-fill" class="board-progress-fill"></div>
+        </div>
+        <button id="duty-pill" class="cal-duty board-duty-pill" type="button"></button>
+      </section>
+
+      <section class="board-card" aria-labelledby="add-task-title">
+        <h2 id="add-task-title" class="cal-section-title board-card-title">添加事务</h2>
+        <form id="add-task-form" class="board-form" novalidate>
+          <label class="cal-field">事务内容
+            <input id="add-task-text" type="text" maxlength="200" autocomplete="off" placeholder="例如：收数学作业" required />
+          </label>
+          <div class="board-form-grid">
+            <label class="cal-field">截止日期
+              <input id="add-task-due-date" type="date" />
+            </label>
+            <label class="cal-field">截止时间
+              <input id="add-task-due-time" type="time" />
+            </label>
+            <label class="cal-field">优先级
+              <select id="add-task-priority">
+                <option value="high">高</option>
+                <option value="normal" selected>普通</option>
+                <option value="low">低</option>
+              </select>
+            </label>
+            <label class="cal-field">分类
+              <select id="add-task-category">
+                <option value="作业" selected>作业</option>
+                <option value="活动">活动</option>
+                <option value="通知">通知</option>
+                <option value="事务">事务</option>
+                <option value="其他">其他</option>
+              </select>
+            </label>
+            <label class="cal-field board-field-wide">负责人
+              <input id="add-task-assignee" type="text" maxlength="20" autocomplete="off" placeholder="例如：数学课代表" />
+            </label>
+          </div>
+          <div class="board-form-foot">
+            <div id="add-task-error" class="cal-error"></div>
+            <button id="add-task-submit" class="cal-btn cal-btn-primary" type="submit">添加事务</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="board-card" aria-labelledby="pending-title">
+        <h2 class="cal-section-title board-card-title"><span id="pending-title">未完成事务</span><span id="pending-count" class="board-section-count"></span></h2>
+        <div id="pending-tasks" class="board-task-list"></div>
+      </section>
+
+      <section class="board-card" aria-labelledby="done-title">
+        <details id="done-details" class="board-done" open>
+          <summary class="board-done-summary">
+            <span id="done-title" class="cal-section-title board-card-title board-done-title">已完成事务</span>
+            <span id="done-count" class="board-section-count"></span>
+          </summary>
+          <div id="done-tasks" class="board-task-list board-task-list-done"></div>
+        </details>
+      </section>
+
+      <section class="board-card" aria-labelledby="preview-title">
+        <h2 class="cal-section-title board-card-title"><span id="preview-title">本周安排</span><span id="preview-count" class="board-section-count"></span></h2>
+        <div id="preview-schedule" class="board-preview-list"></div>
+        <p id="preview-more" class="board-hint" hidden></p>
+        <div class="board-actions board-actions-end">
+          <button id="goto-schedule" class="cal-btn" type="button">在安排视图中查看</button>
+        </div>
+      </section>
+
+      <section class="cal-announcement board-announcement" aria-labelledby="announcement-title">
+        <h2 id="announcement-title" class="cal-section-title">班级通知</h2>
+        <textarea id="announcement-input" class="cal-announcement-input" rows="2" maxlength="600" placeholder="本周班级通知（留空保存即清空）"></textarea>
+        <button id="save-announcement" class="cal-btn" type="button">保存通知</button>
+      </section>
+    </section>
+
+    <!-- ══════════════ 值日 ══════════════ -->
+    <section id="view-duty" class="board-view" role="tabpanel" aria-labelledby="tab-duty" tabindex="-1" hidden>
+      <section class="board-card" aria-labelledby="duty-title">
+        <h2 class="cal-section-title board-card-title"><span id="duty-title">本周值日</span></h2>
+        <div id="duty-info" class="board-kv"></div>
+        <p id="duty-members" class="board-members"></p>
+        <div class="board-actions">
+          <button id="edit-duty" class="cal-btn" type="button">修改本周值日</button>
+        </div>
+      </section>
+
+      <section class="board-card" aria-labelledby="rotation-title">
+        <h2 id="rotation-title" class="cal-section-title board-card-title">轮换预览</h2>
+        <div id="rotation-list" class="board-rot"></div>
+        <p id="rotation-order" class="board-hint"></p>
+      </section>
+
+      <section class="board-card" aria-labelledby="groups-title">
+        <h2 class="cal-section-title board-card-title"><span id="groups-title">分组与轮换顺序</span></h2>
+        <div id="groups-summary" class="board-kv"></div>
+        <p class="board-hint">每行一组，例如「第1组: 张三, 李四」；轮换顺序填组名，用逗号分隔。</p>
+        <div class="board-actions">
+          <button id="edit-groups" class="cal-btn" type="button">编辑分组与轮换</button>
+        </div>
+      </section>
+    </section>
+
+    <!-- ══════════════ 安排 ══════════════ -->
+    <section id="view-schedule" class="board-view" role="tabpanel" aria-labelledby="tab-schedule" tabindex="-1" hidden>
+      <section id="add-schedule-card" class="board-card" aria-labelledby="add-schedule-card-title">
+        <h2 id="add-schedule-card-title" class="cal-section-title board-card-title">添加安排</h2>
+        <form id="add-schedule-form" class="board-form" novalidate>
+          <div class="board-form-grid">
+            <label class="cal-field">周几
+              <select id="add-schedule-weekday">
+                <option value="1" selected>周一</option>
+                <option value="2">周二</option>
+                <option value="3">周三</option>
+                <option value="4">周四</option>
+                <option value="5">周五</option>
+                <option value="6">周六</option>
+                <option value="7">周日</option>
+              </select>
+            </label>
+            <label class="cal-field">时间
+              <input id="add-schedule-time" type="time" />
+            </label>
+          </div>
+          <label class="cal-field">事项
+            <input id="add-schedule-title" type="text" maxlength="60" autocomplete="off" placeholder="例如：班会" required />
+          </label>
+          <div class="board-form-grid">
+            <label class="cal-field">地点
+              <input id="add-schedule-place" type="text" maxlength="40" autocomplete="off" placeholder="例如：教室" />
+            </label>
+            <label class="cal-field">备注
+              <input id="add-schedule-note" type="text" maxlength="60" autocomplete="off" placeholder="可选" />
+            </label>
+          </div>
+          <div class="board-form-foot">
+            <div id="add-schedule-error" class="cal-error"></div>
+            <button id="add-schedule-submit" class="cal-btn cal-btn-primary" type="submit">添加安排</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="board-card" aria-labelledby="schedule-title">
+        <h2 class="cal-section-title board-card-title"><span id="schedule-title">本周安排</span><span id="schedule-count" class="board-section-count"></span></h2>
+        <div id="schedule-list" class="board-schedule-list"></div>
+      </section>
+    </section>
+
+    <!-- ══════════════ 设置 ══════════════ -->
+    <section id="view-settings" class="board-view" role="tabpanel" aria-labelledby="tab-settings" tabindex="-1" hidden>
+      <section class="board-card" aria-labelledby="settings-info-title">
+        <h2 id="settings-info-title" class="cal-section-title board-card-title">班级信息</h2>
+        <div id="settings-info" class="board-kv"></div>
+        <p class="board-hint">修改班级名称、班主任、学期起始日期：设置 → 插件 → 班级事务台。</p>
+      </section>
+
+      <section class="board-card" aria-labelledby="settings-data-title">
+        <h2 id="settings-data-title" class="cal-section-title board-card-title">数据统计</h2>
+        <div id="settings-stats" class="board-kv"></div>
+        <div class="board-actions">
+          <button id="load-demo" class="cal-btn" type="button">写入示例周</button>
+        </div>
+        <p id="load-demo-hint" class="board-hint"></p>
+        <div class="board-clear">
+          <label class="cal-field">清理范围
+            <select id="clear-scope">
+              <option value="tasks" selected>今日事务</option>
+              <option value="schedule">本周安排</option>
+              <option value="duty">本周值日设置</option>
+              <option value="all">今日事务 + 本周安排/值日/通知</option>
+            </select>
+          </label>
+          <button id="clear-button" class="cal-btn cal-btn-danger" type="button">清理所选范围</button>
+          <div id="clear-error" class="cal-error"></div>
+        </div>
+        <p class="board-hint">旧事务保留最近 7 天，可用 Agent 调用 list_tasks 查回。</p>
+      </section>
+
+      <section class="board-card" aria-labelledby="settings-agent-title">
+        <h2 id="settings-agent-title" class="cal-section-title board-card-title">给 Agent 用</h2>
+        <ul class="board-tips">
+          <li>/class 打开管理台；/week-plan 让 Agent 总结今日计划。</li>
+          <li>事务按天：add_task 默认今天，传 date 可排未来某天；旧事务保留 7 天。</li>
+          <li>值日按周：set_duty_week 指定本周组，set_duty_groups 编辑分组与轮换顺序。</li>
+          <li>Agent 修改后页面与小组件会自动刷新，无需手动刷新。</li>
+        </ul>
+      </section>
+    </section>
+  </main>
+
+  <div id="status" class="cal-status" role="status" aria-live="polite"></div>
+</div>
+
+<!-- ══════════════ 事务编辑弹层 ══════════════ -->
+<div id="task-editor" class="cal-modal" hidden>
+  <div class="cal-modal-card board-modal" role="dialog" aria-modal="true" aria-labelledby="task-editor-title">
+    <h2 id="task-editor-title" class="cal-modal-title">编辑事务</h2>
+    <label class="cal-field">内容
+      <input id="task-editor-text" type="text" maxlength="200" autocomplete="off" />
+    </label>
+    <div class="board-form-grid">
+      <label class="cal-field">截止日期
+        <input id="task-editor-due-date" type="date" />
+      </label>
+      <label class="cal-field">截止时间
+        <input id="task-editor-due-time" type="time" />
+      </label>
+      <label class="cal-field">优先级
+        <select id="task-editor-priority">
+          <option value="high">高</option>
+          <option value="normal">普通</option>
+          <option value="low">低</option>
+        </select>
+      </label>
+      <label class="cal-field">分类
+        <select id="task-editor-category">
+          <option value="作业">作业</option>
+          <option value="活动">活动</option>
+          <option value="通知">通知</option>
+          <option value="事务">事务</option>
+          <option value="其他">其他</option>
+        </select>
+      </label>
+      <label class="cal-field board-field-wide">负责人
+        <input id="task-editor-assignee" type="text" maxlength="20" autocomplete="off" />
+      </label>
+    </div>
+    <label class="cal-check"><input id="task-editor-done" type="checkbox" /> 已完成</label>
+    <div id="task-editor-error" class="cal-error"></div>
+    <div class="cal-modal-actions">
+      <button id="task-editor-save" class="cal-btn cal-btn-primary" type="button">保存</button>
+      <button id="task-editor-delete" class="cal-btn cal-btn-danger" type="button">删除</button>
+      <button id="task-editor-cancel" class="cal-btn" type="button">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ 安排编辑弹层 ══════════════ -->
+<div id="schedule-editor" class="cal-modal" hidden>
+  <div class="cal-modal-card board-modal" role="dialog" aria-modal="true" aria-labelledby="schedule-editor-title">
+    <h2 id="schedule-editor-title" class="cal-modal-title">编辑安排</h2>
+    <div class="board-form-grid">
+      <label class="cal-field">周几
+        <select id="schedule-editor-weekday">
+          <option value="1">周一</option>
+          <option value="2">周二</option>
+          <option value="3">周三</option>
+          <option value="4">周四</option>
+          <option value="5">周五</option>
+          <option value="6">周六</option>
+          <option value="7">周日</option>
+        </select>
+      </label>
+      <label class="cal-field">时间
+        <input id="schedule-editor-time" type="time" />
+      </label>
+    </div>
+    <label class="cal-field">事项
+      <input id="schedule-editor-title-input" type="text" maxlength="60" autocomplete="off" />
+    </label>
+    <label class="cal-field">地点
+      <input id="schedule-editor-place" type="text" maxlength="40" autocomplete="off" />
+    </label>
+    <label class="cal-field">备注
+      <input id="schedule-editor-note" type="text" maxlength="60" autocomplete="off" />
+    </label>
+    <div id="schedule-editor-error" class="cal-error"></div>
+    <div class="cal-modal-actions">
+      <button id="schedule-editor-save" class="cal-btn cal-btn-primary" type="button">保存</button>
+      <button id="schedule-editor-cancel" class="cal-btn" type="button">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ 值日弹层 ══════════════ -->
+<div id="duty-editor" class="cal-modal" hidden>
+  <div class="cal-modal-card board-modal" role="dialog" aria-modal="true" aria-labelledby="duty-editor-title">
+    <h2 id="duty-editor-title" class="cal-modal-title">本周值日</h2>
+    <label class="cal-field">值日组
+      <select id="duty-editor-group"></select>
+    </label>
+    <label class="cal-field">备注
+      <input id="duty-editor-note" type="text" maxlength="60" autocomplete="off" placeholder="例如：本周五放学后大扫除" />
+    </label>
+    <div id="duty-editor-error" class="cal-error"></div>
+    <div class="cal-modal-actions">
+      <button id="duty-editor-save" class="cal-btn cal-btn-primary" type="button">保存</button>
+      <button id="duty-editor-cancel" class="cal-btn" type="button">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ 值日分组弹层 ══════════════ -->
+<div id="groups-editor" class="cal-modal" hidden>
+  <div class="cal-modal-card board-modal" role="dialog" aria-modal="true" aria-labelledby="groups-editor-title">
+    <h2 id="groups-editor-title" class="cal-modal-title">值日分组与轮换顺序</h2>
+    <p class="board-hint">每行一组：第1组: 张三, 李四。以 # 开头的行会被忽略。</p>
+    <label class="cal-field">分组
+      <textarea id="groups-editor-text" rows="6" maxlength="1200" placeholder="第1组: 张三, 李四&#10;第2组: 王五, 赵六"></textarea>
+    </label>
+    <label class="cal-field">轮换顺序
+      <input id="groups-editor-order" type="text" maxlength="200" autocomplete="off" placeholder="第1组，第2组，第3组，第4组" />
+    </label>
+    <div id="groups-editor-error" class="cal-error"></div>
+    <div class="cal-modal-actions">
+      <button id="groups-editor-save" class="cal-btn cal-btn-primary" type="button">保存分组</button>
+      <button id="groups-editor-cancel" class="cal-btn" type="button">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ 页面内确认弹层 ══════════════ -->
+<div id="confirm-modal" class="cal-modal" hidden>
+  <div class="cal-modal-card board-modal board-confirm" role="dialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+    <h2 id="confirm-title" class="cal-modal-title">确认操作</h2>
+    <p id="confirm-message" class="board-confirm-text"></p>
+    <div id="confirm-error" class="cal-error"></div>
+    <div class="cal-modal-actions">
+      <button id="confirm-ok" class="cal-btn cal-btn-danger" type="button">确认删除</button>
+      <button id="confirm-cancel" class="cal-btn" type="button">取消</button>
+    </div>
+  </div>
+</div>
+
+<script src="board.js" defer></script>
+</body>
+</html>

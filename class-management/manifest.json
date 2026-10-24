@@ -1,10 +1,10 @@
 {
   "id": "com.classmanagement.board",
   "name": "班级事务台",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "apiVersion": 1,
   "minAuroraVersion": "0.5.2",
-  "description": "2 张桌面浮窗（桌面层 + 亚克力）显示班级速览与今日事务；2 个面板（今日管理台 + 页面型班级周历）与 3 条斜杠命令；12 个 Agent 工具；可选系统通知。",
+  "description": "2 张页面型桌面小组件（桌面层、无毛玻璃）显示班级速览与今日事务；2 个页面型面板（班级事务台 + 班级周历，同一套黑板视觉）与 3 条斜杠命令；12 个 Agent 工具；可选系统通知。",
   "author": {
     "name": "LinePixel2025"
   },
@@ -563,7 +563,7 @@
         "id": "board",
         "title": "班级事务台",
         "icon": "CalendarClock",
-        "schema": "ui/panel.json"
+        "entry": "ui/board.html"
       },
       {
         "id": "calendar",
@@ -579,8 +579,8 @@
         "icon": "Gauge",
         "slot": "desktop",
         "windowLevel": "desktop",
-        "windowMaterial": "acrylic",
-        "schema": "ui/widget-overview.json",
+        "windowMaterial": "none",
+        "entry": "ui/widget-overview.html",
         "defaultSize": {
           "width": 320,
           "height": 300
@@ -592,8 +592,8 @@
         "icon": "ListChecks",
         "slot": "desktop",
         "windowLevel": "desktop",
-        "windowMaterial": "acrylic",
-        "schema": "ui/widget-tasks.json",
+        "windowMaterial": "none",
+        "entry": "ui/widget-tasks.html",
         "defaultSize": {
           "width": 360,
           "height": 460

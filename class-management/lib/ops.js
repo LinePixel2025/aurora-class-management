@@ -254,6 +254,7 @@ async function loadWeekGrid(ctx, weekOffsetInput) {
   const tasks = sortTasks(week.tasks)
   const schedule = sortSchedule(week.schedule)
   const today = todayKey()
+  const weekEditable = weekOffset >= 0
   const days = []
   for (let weekday = 1; weekday <= 7; weekday += 1) {
     const date = dateKeyOfWeekday(weekCtx, weekday)
@@ -262,7 +263,11 @@ async function loadWeekGrid(ctx, weekOffsetInput) {
       weekday,
       label: dateLabel(date),
       isToday: date === today,
-      canEdit: date >= today,
+      isPast: date < today,
+      // 周级可编辑：本周与未来周都可以编辑/删除/完成，只有「过去周」整体只读。
+      canEdit: weekEditable,
+      // 新增事务仍只允许今天与未来日期。
+      canAddTask: weekEditable && date >= today,
       tasks: tasks.filter((task) => task.date === date).map((task) => taskSummary(task, weekCtx)),
       schedule: schedule.filter((entry) => entry.weekday === weekday),
     })
@@ -273,7 +278,7 @@ async function loadWeekGrid(ctx, weekOffsetInput) {
     weekNumber: weekCtx.weekNumber,
     isCurrentWeek: weekCtx.isCurrent,
     todayKey: today,
-    canEdit: weekOffset >= 0,
+    canEdit: weekEditable,
     duty,
     groups: board.duty.groups,
     announcement: week.announcement,
@@ -990,6 +995,7 @@ module.exports = {
   isOverdue,
   dueLabel,
   taskMeta,
+  taskSummary,
   sortTasks,
   sortSchedule,
   taskCounts,
