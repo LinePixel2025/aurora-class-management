@@ -2,7 +2,7 @@
 
 - Task: widget-notify-calendar
 - Step: 4 / 7
-- Status: pending
+- Status: done
 - Depends on: step 3
 - Produces: `lib/ops.js` 增加 `loadWeekGrid` 与 `moveTask`；新增 `lib/calendar.js` 的 `load` 与编辑动作；`main.invokePanel('calendar', ...)` 可调用；离线测试覆盖 7 天数据与增删改移
 - Phase: 集成
@@ -79,4 +79,19 @@
 
 ## 执行记录
 
-（执行后填写：实际改动、验证结果、遗留问题。）
+- 实际改动（提交 `9d7b9a9`，4 个文件，+561/-1）：
+  - `class-management/lib/ops.js`（+77）：`loadWeekGrid(ctx, weekOffsetInput)` 只读返回 `{ weekOffset, weekLabel, weekNumber, isCurrentWeek, todayKey, canEdit, duty, groups, announcement, stats, days }`（days 固定 7 天，任务用 `taskSummary`、安排按 weekday 过滤）；`moveTask(ctx, input)` 在 `updateBoard` 内先校验目标周 `LIMITS.maxTasksPerWeek` 上限、跨周时源周 splice + 目标周 push + 两边 touch，最后改 `task.date`，失败不落盘；导出两个新函数，其余导出未动。
+  - `class-management/lib/calendar.js`（新增 127 行）：`CALENDAR_PANEL_ID='calendar'`、`calendarData(ctx, weekOffset)`、`handleCalendarPanel`；页面 `params` 直接读取（不套 `{params, values}`）；支持 `load/add-task/update-task/toggle-task/delete-task/move-task/add-schedule/update-schedule/delete-schedule/set-duty-week/save-announcement`；成功 `{ data, message }`、`DataError` → `{ data, error }`、其他异常记日志后 `{ data, error: '操作失败，请重试' }`、未知 method 返回最新 `{ data }`；非法 weekOffset 不执行写操作并返回 error。
+  - `class-management/main.js`：`invokePanel` 增加 calendar 分支；board 的 `handlePanelAction` 与其他 panelId 行为不变。
+  - `dev/test-plugin.mjs`：新增「班级周历后端」8 条测试（7 天数据、今日数据、过去周只读、事务增删改切换、同周/跨周移动与过去日期回滚、安排增删改、值日/通知保存、非法 id/未知 method 不写数据）。
+- 子代理分片与结果（3 个并行分片，写范围不重叠）：
+  - 分片 A（`lib/ops.js`）：完成；冒烟覆盖 7 天连续、跨周/同周移动、容量上限报错后存储未写入。
+  - 分片 B（`lib/calendar.js` + `main.js`）：完成；冒烟覆盖全部 12 种方法、非法 weekOffset、缺任务、未知 method、异常分支。
+  - 分片 C（`dev/test-plugin.mjs`）：完成；8 条新测试，最终 81/81。
+- 验证命令与结果（主代理实跑）：
+  - `node dev/test-plugin.mjs` → **81/81** 通过（73 + 8；含宿主原版 zod/schema 校验）；
+  - `node plugin-dev-kit/tools/check-plugin.mjs class-management` → 退出码 0（本步清单未改，仍 v1.3.0、1 个 panel）；
+  - `node -e ...` 断言 `main.invokePanel` 与 `calendar.handleCalendarPanel` / `CALENDAR_PANEL_ID` → 退出码 0；
+  - `node --check class-management/lib/calendar.js`、`node --check class-management/lib/ops.js` → 通过；
+  - `node dev/preview.mjs` → 退出码 0（声明式 schema 未变）；`git diff --check` → 无输出。
+- 遗留问题：本步尚未在 manifest 暴露 calendar 面板/命令、也未把 calendar 加入推送目标（step 5 完成）；页面真机验收留到 step 5。
