@@ -2,7 +2,7 @@
 
 - Task: widget-notify-calendar
 - Step: 6 / 7
-- Status: pending
+- Status: done
 - Depends on: step 5
 - Produces: 根 README 与插件 README 更新到 2.0.0；`docs/images/calendar-dark.png` 与 `calendar-light.png` 截图；全量验证通过并构建 `dist/class-management-2.0.0.zip`
 - Phase: 测试与文档
@@ -74,4 +74,21 @@
 
 ## 执行记录
 
-（执行后填写：实际改动、验证结果、遗留问题。）
+- 实际改动：
+  - `README.md`（根）：版本口径 v2.0.0 / Aurora ≥ 0.5.2；能力列表增加「页面型班级周历」、命令 3 条；新增 `docs/images/calendar-dark.png` 截图与浅色链接；新增「班级周历（页面型面板）」小节（7 天时间线、拖动、页内编辑、过去周只读、页面沙箱、4 条推送）；交付物树补 `lib/calendar.js` / `lib/notify.js` / `ui/calendar.*` / `dev/preview-calendar.mjs` / 周历截图；验证段更新为 check-plugin v2.0.0、`88/88`、preview 与 preview-calendar；真机验收补周历与通知项；故障排查新增「桌面层不生效 / 没有亚克力」；zip 行更新为 `dist/class-management-2.0.0.zip` 72.4 KB + SHA-256；保留「不是 OS 沙箱，安装即信任」「desktop 不是壁纸层/点击穿透」边界。
+  - `class-management/README.md`（随包发布）：版本 2.0.0 / Aurora ≥ 0.5.2；面板改为 2 个（声明式事务台 + 页面型班级周历）；新增页面沙箱说明（仅 `window.auroraPlugin.request/onEvent`、无内联脚本/CDN/fetch）；目录补 `lib/calendar.js` / `ui/calendar.*`；命令 3 条；推送 2 面板 + 2 浮窗 = 4 条（≤5）；测试 `88/88`。
+  - `docs/images/calendar-dark.png`（183 KB）、`docs/images/calendar-light.png`（186 KB）：由 `dev/preview-calendar.mjs` 从真实 `ui/calendar.html|css|js` 渲染后截图拷入（暗色主视图 / 浅色主题）。
+  - 构建：`dist/class-management-2.0.0.zip`，**72.4 KB**，SHA-256 `19A3ED666E7F7E3FC99DE460756FA3D5894DA37DE8BDA8A0D10B448D0847FC6E`，22 个条目、manifest 在 zip 根、无 `node_modules` / `dev/` / `.cache`。
+  - 本步集成期间的两个补充修复：`e0ec476`（声明式面板动作推送改为 4 个目标，含周历面板，并补 1 条断言）；`0da28dd`（页面弹层 `[hidden]` 显隐、窄栏统计换行、`＋ 安排` 按钮样式、预览截图健壮性）。
+- 子代理分片与结果（3 个并行分片）：
+  - A 根 `README.md`：完成；关键项自检与截图引用核对通过。
+  - B `class-management/README.md`：完成；版本/权限/面板/目录/测试数更新，`1.3.0` 无残留。
+  - C 页面预览最终验证（`dev/preview-calendar.mjs` 作者）：三张截图重跑通过，并用 headless DOM 校验 7 个 `.cal-day`、今日高亮、编辑弹层回填；提醒文档截图需用最新 CSS/JS 重新拷贝（已由主代理刷新）。
+- 验证命令与结果（主代理实跑）：
+  - `node plugin-dev-kit/tools/check-plugin.mjs class-management` → 退出码 0，`✓ 清单通过：…v2.0.0`；
+  - `node dev/test-plugin.mjs` → **88/88** 通过；
+  - `node dev/preview.mjs` → 退出码 0（11 张声明式预览图）；`node dev/preview-calendar.mjs` → 退出码 0（3 张页面截图，470×1500）；
+  - `powershell -ExecutionPolicy Bypass -File scripts\build.ps1` → 退出码 0，生成 `dist/class-management-2.0.0.zip`（72.4 KB / SHA 见上）；zip 根含 `manifest.json`，含 `ui/calendar.html` / `lib/calendar.js` / `lib/notify.js` / 插件 README；
+  - 文档/产物静态验收脚本（25 项）：两份 README 均含 `2.0.0` / `notifications` / `班级周历` / `windowLevel` / `windowMaterial`；根 README 保留边界说明并链接两张周历截图、无 `1.1.0` 残留；README 写的大小与实际 zip 一致（72.4 KB）；`Get-FileHash` 与 README SHA 一致；
+  - `git diff --check` → 无输出。
+- 遗留问题：真机手动核对需用户在 Aurora 0.5.2 上完成（安装 v2.0.0 包、桌面层/Acrylic、通知、`/calendar` 页面交互、刷新后数据保留）；离线侧清单/测试/预览/构建/文档一致性均已验证。

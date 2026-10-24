@@ -2,7 +2,7 @@
 
 - Task: widget-notify-calendar
 - Step: 5 / 7
-- Status: pending
+- Status: done
 - Depends on: step 4
 - Produces: `manifest.json` 2.0.0 增加 `calendar` 页面面板与 `/calendar` 命令；`ui/calendar.html/css/js` 实现 7 天时间线、任务拖动与编辑；`dev/preview-calendar.mjs` 生成页面预览截图
 - Phase: 界面/集成
@@ -106,4 +106,27 @@
 
 ## 执行记录
 
-（执行后填写：实际改动、验证结果、遗留问题。）
+- 实际改动（提交 `f830be5`，8 个文件，+3417/-29）：
+  - `class-management/manifest.json`：version 2.0.0；`contributes.panels` 增加页面型 `calendar`（`entry: ui/calendar.html`、icon CalendarClock），保留 board 声明式面板；`contributes.commands` 增加 `calendar`（action），共 3 条命令。
+  - `class-management/lib/push.js`：`PANEL_IDS = ['board','calendar']`；`pushPanel(ctx, panelId, reason)` 显式目标；`pushAll` 推 2 面板 + 2 浮窗共 4 条（≤ 宿主 5 条上限）；保留 `PANEL_ID`、`WIDGET_IDS`、`EVENT`、`pushWidgets` 导出。
+  - `class-management/main.js`：新增 `invokeCommand('calendar')`（打开页面面板并返回 summary）；`class` 命令改为只推 board。
+  - `class-management/ui/calendar.html`（98 行）：仅外链 `calendar.css` / `calendar.js`；静态骨架含周导航、周信息、值日/统计、`#days` 时间线、通知编辑、状态条与 3 个弹层（事务/安排/值日）；无内联脚本/事件/外链。
+  - `class-management/ui/calendar.css`（1207 行）：暗色默认 + `prefers-color-scheme: light` 与 `html[data-theme="light"]` 浅色；垂直 7 天卡片布局（右栏宽度）、弹层 fixed、`:focus-visible`、禁用态与空态。
+  - `class-management/ui/calendar.js`（1393 行）：单飞 load + 旧响应丢弃、board.changed 去抖重载；渲染 7 天/值日/统计/通知；内联添加、完成切换、编辑/删除事务弹层、安排弹层、值日弹层、通知保存；HTML5 拖拽 `move-task`；过去周/过去天只读；错误显示在状态区；全部用 createElement/textContent/value，无 innerHTML 拼用户文本。
+  - `dev/preview-calendar.mjs`（556 行）：读取页面三文件，注入 mock `window.auroraPlugin`（demo 数据 + onEvent 空取消），生成 3 张截图（主视图/浅色/编辑弹层）到 `dev/.cache/`。
+  - `dev/test-plugin.mjs`：清单改 2 面板/3 命令；推送断言改 2 面板 + 上限 5 + pushAll 恰好 4 条 + `/class` 仅推 1 条 board；新增「页面型周历」分组（三文件存在、html 静态约束、js 静态约束、页面 load 7 天）与 `/calendar` 命令测试，共 88/88。
+- 子代理分片与结果（5 个并行分片，写范围不重叠）：
+  - A `manifest.json` + `lib/push.js` + `main.js`：完成；check-plugin 在页面文件落盘前仅报 entry 缺失，落盘后通过 v2.0.0。
+  - B `ui/calendar.html` + `calendar.css`：完成；html 静态约束自检通过、CSS 括号配平。
+  - C `ui/calendar.js`：完成；含完整交互与只读边界。
+  - D `dev/preview-calendar.mjs`：完成；发现并上报 `ui/calendar.js` 顶层 `'use strict'` 后直接接 `(function () {` 的 ASI 隐患（浏览器会解析成 `'use strict'(function(){...})()` 并抛 TypeError）。
+  - E `dev/test-plugin.mjs`：完成；新增/更新测试后 88/88。
+- 主代理修复与集成：把 `ui/calendar.js` 第 16 行改为 `;(function () {` 消除 ASI 运行时错误；重跑 `node dev/preview-calendar.mjs`，三张截图均正常（主视图可见 7 天卡片/值日条/统计/添加表单，editor 图可见事务编辑弹层，light 图可见浅色主题）。
+- 验证命令与结果（主代理实跑）：
+  - `node plugin-dev-kit/tools/check-plugin.mjs class-management` → 退出码 0，`✓ 清单通过：…v2.0.0`（2 面板、3 命令）；
+  - `node dev/test-plugin.mjs` → **88/88** 通过；
+  - `node --check class-management/ui/calendar.js`、`node --check dev/preview-calendar.mjs` → 通过；
+  - `node dev/preview-calendar.mjs` → 退出码 0，`dev/.cache/calendar-preview.png` / `-light.png` / `-editor.png` 三张截图生成（175/178/110 KB）；
+  - 页面静态自检：无内联脚本、无 http(s) 外链、无内联事件；38 个静态元素 ID 齐全；CSS 支持浅色/`data-theme`/`:focus-visible`/`position: fixed`；JS 含 `auroraPlugin.request` / `onEvent`，无 `fetch(` / `eval(` / `innerHTML =`；
+  - `node dev/preview.mjs` → 退出码 0（声明式预览无回归）；`git diff --check` → 无输出。
+- 遗留问题：真机手动核对（`/calendar` 打开、7 天卡片滚动、添加/完成/编辑/删除/拖动、切周、编辑安排/值日/通知、页面刷新后数据保留）需用户在 Aurora 0.5.2 真机确认；离线侧已完成清单/命令/静态约束/渲染截图/后端接口测试。

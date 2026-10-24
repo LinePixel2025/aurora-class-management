@@ -44,8 +44,8 @@
 | 2 | step-02-desktop-acrylic.md | v1.2.0 桌面层与原生亚克力 | done | step 1 | `class-management/manifest.json`、`class-management/README.md`、`README.md`、`docs/aurora-widget-desktop-level.md`、`dev/test-plugin.mjs` |
 | 3 | step-03-notifications.md | v1.3.0 系统通知与定时提醒 | done | step 2 | `class-management/manifest.json`、`class-management/main.js`、`class-management/lib/notify.js`、`dev/test-plugin.mjs`、`README.md`、`class-management/README.md` |
 | 4 | step-04-calendar-backend.md | v2.0.0 班级周历后端与数据接口 | done | step 3 | `class-management/lib/calendar.js`、`class-management/lib/ops.js`、`class-management/main.js`、`dev/test-plugin.mjs` |
-| 5 | step-05-calendar-page.md | v2.0.0 页面型班级周历与预览 | pending | step 4 | `class-management/manifest.json`、`class-management/main.js`、`class-management/lib/push.js`、`class-management/ui/calendar.html`、`class-management/ui/calendar.css`、`class-management/ui/calendar.js`、`dev/preview-calendar.mjs`、`dev/test-plugin.mjs`、`dev/.cache/` |
-| 6 | step-06-docs-build.md | v2.0.0 文档、截图与构建 | pending | step 5 | `README.md`、`class-management/README.md`、`docs/images/calendar-dark.png`、`docs/images/calendar-light.png`、`dev/preview-calendar.mjs`、`dev/.cache/`、`dist/` |
+| 5 | step-05-calendar-page.md | v2.0.0 页面型班级周历与预览 | done | step 4 | `class-management/manifest.json`、`class-management/main.js`、`class-management/lib/push.js`、`class-management/ui/calendar.html`、`class-management/ui/calendar.css`、`class-management/ui/calendar.js`、`dev/preview-calendar.mjs`、`dev/test-plugin.mjs`、`dev/.cache/` |
+| 6 | step-06-docs-build.md | v2.0.0 文档、截图与构建 | done | step 5 | `README.md`、`class-management/README.md`、`docs/images/calendar-dark.png`、`docs/images/calendar-light.png`、`dev/preview-calendar.mjs`、`dev/.cache/`、`dist/` |
 | 7 | step-07-archive.md | 归档清理 | pending | step 1..6 | `step/` |
 
 ## 审查重点
@@ -63,4 +63,4 @@
 
 - step 1（2026-10-24）：`dev/preview.mjs` 增加 asar 资源模式发现（`readAsarHeader`/`listAsarFiles`/`findAsset`），4 处硬编码 CSS 哈希改为 `theme-*` / `PluginSchemaRenderer-*` / `widget-*` / `PluginPageFrame-*`；`node dev/preview.mjs` 退出码 0、生成 11 张 PNG，`node dev/test-plugin.mjs` 59/59。提交 `420d1d6`（计划文件提交 `6616399`）。
 - step 2（2026-10-24）：manifest 升 v1.2.0 / minAuroraVersion 0.5.2，2 个 widget 默认 `windowLevel: desktop` + `windowMaterial: acrylic`；`docs/aurora-widget-desktop-level.md` 改写为 0.5.2 能力说明；两份 README 同步平台特性；测试增加 widget 层级/材质断言。验收：check-plugin v1.2.0 通过、test 59/59、preview 11 张 PNG、README 旧限制表述清零、`git diff --check` 通过。提交 `29ad322`。
-- step 4（2026-10-24）：`ops.js` 新增 `loadWeekGrid`（7 天周历数据）与 `moveTask`（跨周/同周移动 + 容量守卫）；新增 `lib/calendar.js` 的 `handleCalendarPanel`（12 种页面动作、统一 `{data,message|error}` 返回）；`main.invokePanel` 增加 calendar 分支；测试新增 8 条周历后端用例（81/81）。验收：test 81/81、check-plugin 通过、contract 断言通过、preview 退出码 0、`git diff --check` 通过。提交 `9d7b9a9`。
+- step 6（2026-10-24）：根 README 与插件 README 更新到 v2.0.0（页面周历、3 命令、2 面板、88/88、页面沙箱、推送 4 条、故障排查、真机清单）；`docs/images/calendar-dark.png` / `calendar-light.png` 由真实页面预览生成；`scripts/build.ps1` 生成 `dist/class-management-2.0.0.zip`（72.4 KB，SHA-256 `19A3ED…7FC6E`），根 README zip 行同步。集成期补充修复：声明式面板动作推送 4 目标（`e0ec476`）、页面弹层隐藏/窄栏布局/预览健壮性（`0da28dd`）。验收：check-plugin v2.0.0、test 88/88、两套 preview 退出码 0、build 退出码 0、zip 根含 manifest 且 SHA 与 README 一致、`git diff --check` 通过。
