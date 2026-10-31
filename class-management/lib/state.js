@@ -418,16 +418,11 @@ function sanitizeUi(raw) {
   const formRev = Number.isFinite(Number(source.formRev))
     ? Math.max(0, Math.trunc(Number(source.formRev)))
     : 0
-  const quickRev = Number.isFinite(Number(source.quickRev))
-    ? Math.max(0, Math.trunc(Number(source.quickRev)))
-    : 0
   return {
     view: VIEWS.includes(source.view) ? source.view : 'board',
     weekOffset: normalizeOffset(source.weekOffset),
     // 表单绑定键版本号：动作成功后递增，避免宿主用旧输入值覆盖刚写入的数据
     formRev,
-    // 浮窗「快速添加」输入框的版本号
-    quickRev,
     // 管理台当前展开编辑的事务（空字符串表示未选中）
     editingTaskId:
       typeof source.editingTaskId === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(source.editingTaskId)

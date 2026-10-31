@@ -1,7 +1,7 @@
 {
   "id": "com.classmanagement.board",
   "name": "班级事务台",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "apiVersion": 1,
   "minAuroraVersion": "0.5.3",
   "description": "2 张页面型桌面小组件（桌面层、无毛玻璃）显示班级速览与今日事务；2 个页面型面板（班级事务台 + 班级周历，同一套黑板视觉）与 3 条斜杠命令；13 个 Agent 工具；可选系统通知（每日简报 / 事务截止 / 周一值日 / 安排到点前提醒）。",

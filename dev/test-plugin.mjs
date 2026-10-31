@@ -231,7 +231,7 @@ function createContext(options) {
     ...(settings.config || {}),
   }
   const ctx = {
-    plugin: { id: PLUGIN_ID, version: '2.2.0', root: PLUGIN, dataDir: PLUGIN, isDev: true },
+    plugin: { id: PLUGIN_ID, version: '2.2.1', root: PLUGIN, dataDir: PLUGIN, isDev: true },
     config,
     storage: {
       async get(key) {
@@ -693,9 +693,9 @@ async function mainTest() {
   // ═════════════════════════ 清单 ═════════════════════════
 
   header('清单与页面化声明')
-  await test('清单基础字段（版本 2.2.0 / 入口 / 激活方式）', async () => {
+  await test('清单基础字段（版本 2.2.1 / 入口 / 激活方式）', async () => {
     assertEqual(manifest.id, PLUGIN_ID)
-    assertEqual(manifest.version, '2.2.0')
+    assertEqual(manifest.version, '2.2.1')
     assertEqual(manifest.apiVersion, 1)
     assertEqual(manifest.minAuroraVersion, '0.5.3')
     assertEqual(manifest.main, 'main.js')
@@ -2981,28 +2981,19 @@ async function mainTest() {
       await loadWidget(env, 'week-tasks')
       assertNoPush(env, before, 'widget load')
     })
-    await test('widget add-task 添加今日事务并推送 4 条', async () => {
+    await test('widget 不再提供 add-task（按刷新返回、不写入不推送）', async () => {
       const before = pushCount(env)
-      const result = await invokeWidget(env, 'week-tasks', 'add-task', { text: '浮窗新增事务' })
-      const data = expectWidgetOk(result, 'widget add-task')
-      assertEqual(result.message, '已添加事务')
-      assertPushAllSlice(env, before, 'widget add-task 推送')
-      assert(widgetTaskByText(data, '浮窗新增事务') !== null, 'add-task 返回数据缺少新事务')
-      const board = await loadBoard(env, {})
-      assert(boardTaskByText(board, '浮窗新增事务') !== null, '小组件写入未同步到面板数据')
-    })
-    await test('widget add-task 空文本返回 error 且不推送', async () => {
-      const before = pushCount(env)
-      const result = await invokeWidget(env, 'week-tasks', 'add-task', { text: '   ' })
-      expectWidgetError(result, 'widget add-task 空文本')
-      assert(result.error.includes('输入'), `空文本提示不明确：${result.error}`)
-      assertEqual(result.message, undefined)
-      assertNoPush(env, before, 'widget add-task 空文本')
+      const result = await invokeWidget(env, 'week-tasks', 'add-task', { text: '浮窗不应新增' })
+      const data = expectWidgetOk(result, 'widget 已移除 add-task')
+      assertEqual(result.message, undefined, '已移除的 add-task 不应返回 message')
+      assertNoPush(env, before, 'widget 已移除 add-task')
+      assertEqual(widgetTaskByText(data, '浮窗不应新增'), null, 'add-task 不应再写入事务')
+      assertEqual(taskByText(env, '浮窗不应新增'), null, 'add-task 不应落盘')
     })
     await test('widget toggle-task 完成 / 恢复', async () => {
       let data = await loadWidget(env, 'week-tasks')
-      const task = widgetTaskByText(data, '浮窗新增事务')
-      assert(task !== null, '找不到前置事务')
+      const task = widgetTaskByText(data, '浮窗事务1')
+      assert(task !== null, '找不到浮窗事务1')
       const before = pushCount(env)
       const done = await invokeWidget(env, 'week-tasks', 'toggle-task', { id: task.id })
       const doneData = expectWidgetOk(done, 'widget toggle-task 完成')
@@ -3016,15 +3007,15 @@ async function mainTest() {
     })
     await test('widget delete-task 删除今日事务', async () => {
       const data = await loadWidget(env, 'week-tasks')
-      const task = widgetTaskByText(data, '浮窗新增事务')
-      assert(task !== null, '找不到前置事务')
+      const task = widgetTaskByText(data, '浮窗事务2')
+      assert(task !== null, '找不到浮窗事务2')
       const before = pushCount(env)
       const result = await invokeWidget(env, 'week-tasks', 'delete-task', { id: task.id })
       const after = expectWidgetOk(result, 'widget delete-task')
       assertEqual(result.message, '已删除事务')
       assertPushAllSlice(env, before, 'widget delete-task 推送')
       assertEqual(widgetTaskById(after, task.id), null, '删除后返回数据仍含该事务')
-      assertEqual(taskByText(env, '浮窗新增事务'), null, '删除后存储仍有该事务')
+      assertEqual(taskByText(env, '浮窗事务2'), null, '删除后存储仍有该事务')
     })
     await test('widget delete-task 未知 id 返回 error 且不推送', async () => {
       const before = pushCount(env)
@@ -3111,9 +3102,13 @@ async function mainTest() {
       assertEqual(slice.filter((push) => push.widgetId !== undefined).length, 2, '应推送 2 个小组件')
     })
     await test('所有推送目标/事件名/payload 合法且单次 ≤5 条', async () => {
+      await invokeTool(env, 'add_task', { text: '推送校验小组件事务' })
+      const widgetData = await loadWidget(env, 'week-tasks')
+      const widgetTask = widgetTaskByText(widgetData, '推送校验小组件事务')
+      assert(widgetTask !== null, '推送校验小组件前置事务创建失败')
       for (const action of [
         () => invokeTool(env, 'add_task', { text: '推送校验事务' }),
-        () => invokeWidget(env, 'week-tasks', 'add-task', { text: '推送校验小组件事务' }),
+        () => invokeWidget(env, 'week-tasks', 'toggle-task', { id: widgetTask.id }),
         () => invokeTool(env, 'set_announcement', { text: '推送校验通知' }),
         () => invokeBoard(env, 'add-schedule', { weekOffset: 0, weekday: 2, title: '推送校验安排' }),
       ]) {

@@ -1,4 +1,4 @@
-# Aurora 桌面小组件与页面型小组件说明（班级事务台 v2.1.2）
+# Aurora 桌面小组件与页面型小组件说明（班级事务台 v2.2.1）
 
 > 适用宿主：Aurora **0.5.3 及以上**（`hideCloseButton` 需要 0.5.3+）
 > 插件：`com.classmanagement.board`（班级事务台）
@@ -6,7 +6,7 @@
 
 ## 1. 本版声明的组合
 
-班级事务台 v2.1.2 的 2 张桌面小组件都声明为**页面型小组件**（`entry` 页面），默认层级 `desktop`、
+班级事务台 v2.2.1 的 2 张桌面小组件都声明为**页面型小组件**（`entry` 页面），默认层级 `desktop`、
 材质 `none`（不启用原生 Acrylic / 毛玻璃），并通过 `hideCloseButton: true` 请求宿主隐藏标题栏右上角的
 「隐藏小组件」按钮；`minAuroraVersion` 为 `0.5.3`。
 
@@ -19,7 +19,7 @@
 
 ```json
 {
-  "version": "2.1.2",
+  "version": "2.2.1",
   "minAuroraVersion": "0.5.3",
   "contributes": {
     "widgets": [
@@ -72,6 +72,9 @@
   `aurora-plugin://<pluginId>/<entry>`；
 - 页面只通过 `window.auroraPlugin.request(method, params)` / `onEvent(listener)` 与插件进程通信
   （与页面型面板同一套沙箱口径），没有内联脚本、没有 CDN、没有 `fetch`；
+- 小组件窗口**不可激活**（Aurora 2026-10-30 起 `focusable: false`，点击不抢前台），卡内文本输入
+  拿不到键盘焦点；因此本插件的小组件不提供输入框，只保留完成 / 删除等点击操作，新增事务请在
+  班级事务台或周历里完成；
 - 页面布局位于宿主标题栏下方，可用高度约为 `defaultSize.height - 28px`；内容超出时页面内滚动；
 - 宿主在插件写入后通过 `ctx.ui.panelEvent({ widgetId })` 推送 `board.changed`，页面收到后重新 `load`；
 - 插件不创建窗口、不读取或修改宿主窗口属性，也不调用任何 Win32 API；层级与材质的实际效果由宿主实现。

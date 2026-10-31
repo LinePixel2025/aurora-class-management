@@ -329,10 +329,6 @@ async function bumpFormRev(ctx) {
   return updateUi(ctx, (ui) => ({ formRev: (Number(ui.formRev) || 0) + 1 }))
 }
 
-async function bumpQuickRev(ctx) {
-  return updateUi(ctx, (ui) => ({ quickRev: (Number(ui.quickRev) || 0) + 1 }))
-}
-
 function findGroup(board, value) {
   const query = clip(value, 40)
   if (query === '') return null
@@ -1107,7 +1103,6 @@ module.exports = {
   loadUi,
   saveUi,
   bumpFormRev,
-  bumpQuickRev,
   isOverdue,
   dueLabel,
   taskMeta,

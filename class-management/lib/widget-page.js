@@ -4,12 +4,12 @@
  * 页面型桌面小组件（week-overview / week-tasks）后端处理器。
  *
  * 页面 request(method, params) 的 params 是直接对象；数据统一来自 `ops.loadWeek(ctx, 0)`
- * （今天的视图），写动作复用 lib/ops.js 并在成功后 `pushAll`（2 面板 + 2 小组件）。
+ * （今天的视图），完成 / 删除复用 lib/ops.js 并在成功后 `pushAll`（2 面板 + 2 小组件）。
  * 两个小组件返回同一份 `WidgetData` 形状（见 dev/page-api.md §7.1）。
+ * 宿主小组件窗口不可激活，页面不提供文本输入。
  */
 
 const { DataError } = require('./state')
-const { clip } = require('./util')
 const { todayKey, dateLabel, shortDate } = require('./time')
 const ops = require('./ops')
 const { pushAll } = require('./push')
@@ -72,13 +72,6 @@ async function handleWidgetPage(widgetId, method, params, ctx) {
   }
 
   try {
-    if (name === 'add-task') {
-      const text = clip(p.text, 200)
-      if (text === '') throw new DataError('请先输入事务内容')
-      await ops.addTask(ctx, { text, date: todayKey() })
-      await pushAll(ctx, 'widget-add-task')
-      return { data: await readData(), message: '已添加事务' }
-    }
     if (name === 'toggle-task') {
       const id = typeof p.id === 'string' ? p.id.trim() : ''
       if (id === '') throw new DataError('缺少事务 id')

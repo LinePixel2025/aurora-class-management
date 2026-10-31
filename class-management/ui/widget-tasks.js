@@ -8,7 +8,7 @@
  *
  * 结构约定：
  * - load 单飞 + 序号丢弃：同一时间只有一个 load 在飞，过期响应不会覆盖新数据；
- * - 写动作（add-task / toggle-task / delete-task）成功后直接用返回的整份数据重绘，
+ * - 写动作（toggle-task / delete-task）成功后直接用返回的整份数据重绘，
  *   并递增 dataVersion，让动作之前发出的 load 结果自动作废；
  * - board.changed 事件只负责触发一次去抖（200ms）后的重新加载；
  * - 删除用页面内二次确认：第一次点「删除」进入「确认删除？」状态，4s 后自动复原；
@@ -97,16 +97,6 @@
   function setText(node, value) {
     if (node === null || node === undefined) return
     node.textContent = textOf(value)
-  }
-
-  function focusElement(node) {
-    if (node === null || node === undefined) return
-    if (typeof node.focus !== 'function' || node.disabled === true) return
-    try {
-      node.focus()
-    } catch (error) {
-      // 输入框已从文档移除时浏览器可能拒绝聚焦，忽略即可。
-    }
   }
 
   /** 从 YYYY-MM-DD 推周几（1=周一…7=周日），仅作 todayWeekday 缺失时的兜底。 */
@@ -334,29 +324,6 @@
         if (!state.loadInFlight) setBusy(false)
         return outcome
       })
-  }
-
-  function handleQuickSubmit(event) {
-    if (event !== null && event !== undefined && typeof event.preventDefault === 'function') {
-      event.preventDefault()
-    }
-    if (state.actionInFlight) return
-    if (elements.quickInput === null || elements.quickInput === undefined) return
-
-    const text = trimmedOf(elements.quickInput.value)
-    if (text === '') {
-      showStatus('先输入事务内容，再点添加', 'error')
-      focusElement(elements.quickInput)
-      return
-    }
-
-    const input = elements.quickInput
-    runAction('add-task', { text: text }, '已添加事务').then(function (outcome) {
-      if (outcome.error !== '') return
-      // 仅在用户没有继续改动输入框时清空，避免吞掉刚输入的下一条。
-      if (trimmedOf(input.value) === text) input.value = ''
-      focusElement(input)
-    })
   }
 
   function toggleTask(task) {
@@ -593,7 +560,7 @@
       if (pending.length === 0) {
         const empty = document.createElement('li')
         empty.className = 'cal-empty wd-empty'
-        if (rawTasks.length === 0) empty.textContent = '今天还没有事务，在上面快速加一条。'
+        if (rawTasks.length === 0) empty.textContent = '今天还没有事务。'
         else if (done.length > 0) empty.textContent = '今天的待办清空了，已完成 ' + done.length + ' 条。'
         else empty.textContent = '今天还没有待办事务。'
         pendingList.appendChild(empty)
@@ -797,8 +764,6 @@
     elements.completionLabel = document.getElementById('completion-label')
     elements.progress = document.getElementById('progress')
     elements.progressFill = document.getElementById('progress-fill')
-    elements.quickForm = document.getElementById('quick-form')
-    elements.quickInput = document.getElementById('quick-input')
     elements.pendingBadge = document.getElementById('pending-badge')
     elements.pendingList = document.getElementById('pending-list')
     elements.doneSection = document.getElementById('done-section')
@@ -811,10 +776,6 @@
   }
 
   function bindEvents() {
-    if (elements.quickForm !== null && elements.quickForm !== undefined) {
-      elements.quickForm.addEventListener('submit', handleQuickSubmit)
-    }
-
     // 点到删除按钮以外的地方、或按 Esc 时，取消“确认删除？”状态。
     document.addEventListener('pointerdown', function (event) {
       if (state.armingTaskId === '') return

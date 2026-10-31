@@ -518,48 +518,8 @@ body {
 }
 
 /* ════════════════════════════════════════════
-   7. 今日事务：快速添加与状态条
+   7. 今日事务：状态条
    ════════════════════════════════════════════ */
-.wd-quick {
-  display: flex;
-  align-items: stretch;
-  gap: 0.5em;
-  min-width: 0;
-}
-
-.wd-quick-input {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 2.17em;
-  padding: 0.25em 0.67em;
-  border: 1px solid var(--cal-line);
-  border-radius: 0.58em;
-  background: var(--cal-surface-sunken);
-  color: var(--cal-text);
-  font: 400 0.96em/1.4 var(--cal-font-body);
-  transition: border-color 120ms ease;
-}
-
-.wd-quick-input::placeholder {
-  color: var(--cal-faint);
-}
-
-.wd-quick-input:hover:not(:disabled) {
-  border-color: var(--cal-line-strong);
-}
-
-.wd-quick-input:focus-visible {
-  border-color: var(--cal-accent);
-}
-
-.wd-quick .cal-btn {
-  flex: 0 0 auto;
-  min-height: 2.17em;
-  padding: 0.25em 0.9em;
-  border-radius: 0.58em;
-  font-size: 0.96em;
-}
-
 .wd-app .cal-status {
   margin: 0;
   padding: 0.33em 0.67em;

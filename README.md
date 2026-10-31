@@ -2,9 +2,9 @@
 
 > GitHub：<https://github.com/LinePixel2025/aurora-class-management>
 
-插件 **v2.2.0**，最低宿主 **Aurora 0.5.3（插件 API v1）**。班级事务管理系统：
+插件 **v2.2.1**，最低宿主 **Aurora 0.5.3（插件 API v1）**。班级事务管理系统：
 
-- **2 张页面型桌面小组件**：班级速览（含本周值日与每天例行）与今日事务（含每天例行与本周安排）——桌面层、不启用毛玻璃，可拖动 / 缩放，位置由 Aurora 记住；右上角无关闭键，小组件里可直接快速添加、完成 / 恢复、删除今日待办；
+- **2 张页面型桌面小组件**：班级速览（含本周值日与每天例行）与今日事务（含每天例行与本周安排）——桌面层、不启用毛玻璃，可拖动 / 缩放，位置由 Aurora 记住；右上角无关闭键，小组件里可直接完成 / 恢复、删除今日待办；
 - **2 个页面型右栏面板**：**班级事务台**（`/class`，今日 / 值日 / 安排 / 设置 4 视图）与**班级周历**（`/calendar`，垂直 7 天时间线），两者共用同一套「黑板 / 备课本」设计系统，都可直接删除事务与安排；
 - **删除不再难找**：事务台里未完成、**已完成**事务与每条安排都有行内「删除」按钮，走页面内确认弹层；
 - **本周内过去天可编辑**：周历里只限制「过去周」只读；本周内周一到昨天的事务 / 安排也能编辑、删除、完成（新增事务仍只允许今天与未来）；
@@ -31,7 +31,7 @@ class-management/                 插件包（zip 根目录）
   lib/page-core.js                页面 RPC 公共工具（参数归一 / 动作结果 / 错误兜底）
   lib/board-page.js               页面型「班级事务台」后端：4 视图数据与全部页面动作
   lib/calendar.js                 页面型「班级周历」后端：7 天数据与事务 / 安排 / 值日 / 通知动作
-  lib/widget-page.js              页面型桌面小组件后端：WidgetData 与快速添加 / 完成 / 删除
+  lib/widget-page.js              页面型桌面小组件后端：WidgetData 与完成 / 删除
   lib/notify.js                   可选系统通知与去重状态（notify.v1）
   ui/calendar.css                 全插件页面共用设计系统（令牌 / 基础 / 按钮 / 弹层 / 表单）
   ui/board.html|css|js            页面型班级事务台（/class）
@@ -39,8 +39,8 @@ class-management/                 插件包（zip 根目录）
   ui/widget-overview.html|js      页面型桌面小组件「班级速览」
   ui/widget-tasks.html|js         页面型桌面小组件「今日事务」
   ui/widget.css                   两张小组件共用的紧凑样式
-GitHub Releases（安装包附件，仓库外）  v2.1.2 安装包；本地构建输出 dist/class-management-2.2.0.zip（已 gitignore）
-dev/test-plugin.mjs               离线全链路测试（mock 宿主 + 宿主原版 zod 清单解析，166/166）
+GitHub Releases（安装包附件，仓库外）  v2.2.1 安装包；本地构建输出 dist/class-management-2.2.1.zip（已 gitignore）
+dev/test-plugin.mjs               离线全链路测试（mock 宿主 + 宿主原版 zod 清单解析，167/167）
 dev/preview.mjs                   页面型事务台 / 小组件预览与截图（生成 dev/.cache，可拷入 docs/images）
 dev/preview-calendar.mjs          页面型周历预览与截图（合成页面 + mock auroraPlugin）
 dev/page-api.md                   页面型面板 / 小组件 API 契约（开发用，不随插件发布）
@@ -63,7 +63,7 @@ docs/aurora-widget-desktop-level.md  Aurora 桌面层与页面型小组件能力
    powershell -ExecutionPolicy Bypass -File scripts\build.ps1
    ```
 
-   产物为 `dist\class-management-2.2.0.zip`。
+   产物为 `dist\class-management-2.2.1.zip`。
 
 2. Aurora → 设置 → 插件 → 已安装 → **安装插件包**，选择下载的 zip；
 3. 核对权限、工具后安装。桌面上会出现 2 张小组件；右栏「插件面板」或 `/class` / `/calendar` 可打开事务台与周历。
@@ -91,7 +91,7 @@ docs/aurora-widget-desktop-level.md  Aurora 桌面层与页面型小组件能力
 | 小组件 | 内容 | 默认尺寸 | 形态 | 层级 / 材质 |
 | --- | --- | --- | --- | --- |
 | 班级速览 | 班级名、周次、班主任、今日事务计数与完成率、本周值日组与成员 / 备注、本周安排前 3 项（今天高亮）、班级通知摘要 | 320×300 | 页面型 `ui/widget-overview.html` | `desktop` / `none` |
-| 今日事务 | 今日日期与计数、完成率、快速添加、待办行（完成 / 恢复、截止信息、删除）、已完成区（可恢复 / 删除）、本周安排（今天高亮） | 360×460 | 页面型 `ui/widget-tasks.html` | `desktop` / `none` |
+| 今日事务 | 今日日期与计数、完成率、待办行（完成 / 恢复、截止信息、删除）、已完成区（可恢复 / 删除）、本周安排（今天高亮） | 360×460 | 页面型 `ui/widget-tasks.html` | `desktop` / `none` |
 
 - 都是 Aurora 的**桌面层小组件**（无边框、不占任务栏），可拖动、缩放；位置与显隐由 Aurora 持久化。
 - **字号随窗口缩放**：文字、间距与控件一起按窗口宽度等比放大（默认约 13px，最大 40px）。
@@ -101,7 +101,9 @@ docs/aurora-widget-desktop-level.md  Aurora 桌面层与页面型小组件能力
 - `desktop` 是尽力而为：宿主按“普通窗口 + Win32 owner 亲和 + 恢复守护”实现，owner 亲和失败时回退普通层（`normal`）。
 - **不启用毛玻璃**：v2.1.0 起 `windowMaterial: "none"`，小组件为不透明卡片；v2.0.0 的 Acrylic 方案已移除。
 - 小组件页面运行在宿主沙箱 webview 中，只通过 `window.auroraPlugin.request` / `onEvent` 与插件后端通信。
-- 在小组件里可以直接快速添加今日事务、点圆点完成 / 恢复、删除待办（页面内二次确认，不需要打开面板）。
+- 在小组件里可以点圆点完成 / 恢复、删除待办（页面内二次确认，不需要打开面板）。
+- **小组件不提供文本输入框**：最新 Aurora 把桌面小组件窗口设为不可激活（点击不抢前台），卡内文本输入拿不到键盘焦点；
+  新增事务请在班级事务台（`/class`）或周历里操作。
 - **右上角的 `×` 由宿主绘制**，不属于插件页面 DOM；本插件通过清单 `hideCloseButton: true` 请求宿主不渲染它。
   隐藏 / 恢复在 设置 → 插件 → 班级事务台 →「显示在桌面」操作（位置沿用）。
 - 层级 / 材质可在 Aurora 设置 → 插件 → 班级事务台 → 对应小组件逐 widget 覆盖（跟随插件 / 置顶 / 普通 / 桌面层）。
@@ -159,8 +161,8 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 
 当前离线验证结果：
 
-- `check-plugin.mjs`：通过（`com.classmanagement.board` v2.2.0，2 个页面型面板、2 个页面型桌面小组件、3 条命令）；
-- `dev/test-plugin.mjs`：**168/168 项检查通过**；
+- `check-plugin.mjs`：通过（`com.classmanagement.board` v2.2.1，2 个页面型面板、2 个页面型桌面小组件、3 条命令）；
+- `dev/test-plugin.mjs`：**167/167 项检查通过**；
   覆盖时间 / 周次、存储读取、串行并发写、旧数据迁移（含旧数据补齐 `routines`）、2 个页面型小组件、13 个工具、
   页面型事务台 4 视图与全部动作（含已完成事务删除、安排删除、值日 / 分组 / 通知 / 清理 / 示例周 / 基础安排逐条增删改）、
   页面型周历（7 天 load、事务与安排动作、拖动、基础安排按星期铺到日卡、本周过去天可编辑与过去周只读）、命令、
@@ -172,15 +174,15 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 - `node dev/preview.mjs`：生成事务台 4 视图 / 空态 / 浅色 / 三类弹层（事务、安排含提醒、基础安排）/ 删除确认与 2 张小组件共 15 张截图到 `dev/.cache/`
   （含 640×520 / 720×900 的课堂放大预览，验证字号随窗口缩放）；
   `node dev/preview-calendar.mjs`：生成周历 3 张截图；README 配图由这些图拷入 `docs/images/`；
-- 本地构建产物 `dist/class-management-2.2.0.zip`：125.3 KB，SHA-256 `BA10B1E6F154E48ECB8038C518B0264F069436CE33D78992EC5C956177608010`；
-  manifest 在 zip 根，条目使用正斜杠，无 `node_modules` / `dev/` / 缓存文件。GitHub Release 上仍是在线的 v2.1.2 安装包，未重新发布。
+- 本地构建产物 `dist/class-management-2.2.1.zip`：124.6 KB，SHA-256 `2A7EDFE924E0E6867571646FC3042323AE23667EA6C245C14433FF2EDAA16276`；
+  manifest 在 zip 根，条目使用正斜杠，无 `node_modules` / `dev/` / 缓存文件。GitHub Release v2.2.1 使用该产物，发布后重新下载校验摘要。
 
 真机验收清单（需要你在 Aurora 里点一遍）：
 
 - [ ] 插件状态「运行中」，桌面出现 **2 张小组件**（班级速览 / 今日事务），为不透明卡片、无毛玻璃；
 - [ ] 小组件可拖动 / 缩放，重启 Aurora 后位置保留；标题栏无 `×`（`hideCloseButton: true`），
       隐藏 / 恢复在设置 →「显示在桌面」操作；
-- [ ] 小组件里能快速添加今日事务、点圆点完成 / 恢复、删除待办（二次确认）；
+- [ ] 小组件里能点圆点完成 / 恢复、删除待办（二次确认），且没有文本输入框；
 - [ ] `/class` 打开页面型班级事务台：4 个 tab 可切换，今日 / 值日 / 安排 / 设置视觉与周历一致；
 - [ ] 事务台里未完成与**已完成**事务都能删除；每条安排都能编辑 / 删除；删除走页面内确认弹层；
 - [ ] 值日在事务台今日 / 值日视图、周历头部、班级速览四处都是「组名徽章 + 轮换方式 + 成员 + 备注」分层显示，长名单换行不糊；
